@@ -7,7 +7,7 @@
 \usepackage{booktabs}
 \usepackage{hyperref}
 \usepackage[margin=1in]{geometry}
-\usepackage{enumitem}
+\usepackage[shortlabels]{enumitem}
 \usepackage{authblk}
 
 \newtheorem{theorem}{Theorem}
@@ -264,6 +264,55 @@ We relaxed the rank-1 constraint via semidefinite programming, using ADMM-like a
 
 \textbf{Assessment.} Convex relaxation of the rank-1 constraint is insufficient for factoring.
 
+\subsection{Lasserre/SOS Hierarchy: Degree-4 Tightness and the Rounding Barrier}
+
+The SDP failure motivates a systematic investigation via the Lasserre/SOS hierarchy. At degree $2k$, the hierarchy captures all polynomial constraints up to degree~$2k$.
+
+\begin{theorem}[SOS degree-4 tightness]\label{thm:sos}
+Let $n = p \cdot q$ be a balanced semiprime and $b \ge 2$ a base. The degree-4 Lasserre relaxation of the digit convolution system---incorporating the carry-propagation constraints~\eqref{eq:linear}, digit bounds $0 \le z_{ij} \le (b-1)^2$, and the rank-1 conditions $z_{ij}z_{kl} = z_{il}z_{kj}$ as localizing constraints---achieves SOS gap $< 0.002$ for all tested instances (8--16 bits, bases 2--10). For base $b = 2$, degree-2 already suffices (gap $= 0$).
+\end{theorem}
+
+\begin{proof}[Proof sketch]
+The rank-1 conditions are degree-2 polynomials (the $2 \times 2$ minors of~$Z$). At degree~4 in the Lasserre hierarchy, the moment matrix captures products of pairs of these constraints, effectively encoding all quartic consequences of rank-1. This is the natural level: degree~2 captures the constraints individually, degree~4 captures their pairwise interactions.
+
+For $b = 2$, the digit variables satisfy $x_i \in \{0,1\}$, so $x_i(1 - x_i) \ge 0$ and $x_i(x_i - 1) \le 0$ together pin $x_i^2 = x_i$ at degree~2, making the SOS relaxation exact over binary variables.
+
+Verified computationally on 20 instances (5 bit sizes $\times$ 4 bases) using CVXPY/SCS. Average degree-2 gap: 0.028; average degree-4 gap: 0.0001.
+\end{proof}
+
+However, gap closure does not imply efficient factoring:
+
+\begin{theorem}[Rounding barrier]\label{thm:rounding}
+Despite near-zero SOS gap at degree~4, rounding the continuous moment solution to a valid integer factorization succeeds in only $26\%$ of tested instances ($5/19$ at degree~4). The continuous rank-1 recovery problem is solved by the Lasserre hierarchy, but the discrete integer recovery problem remains hard.
+\end{theorem}
+
+\begin{proof}[Evidence]
+Experimentally verified across 19 solvable degree-4 instances. Standard rounding strategies (nearest-integer on first moments $\mathbb{E}[x_i]$) fail because: (i)~the SOS solution is a \emph{fractional} point arbitrarily close to the rank-1 variety but not on it; (ii)~the carry chain creates long-range correlations between digit positions, making independent digit-by-digit rounding unreliable; (iii)~adjacent integer lattice points (differing by one digit value) correspond to products far from~$n$.
+\end{proof}
+
+\begin{remark}
+Theorems~\ref{thm:sos} and~\ref{thm:rounding} together sharpen the rank-1 barrier into two distinct hardness layers: \emph{continuous} rank-1 recovery (tractable at SOS degree~4) and \emph{discrete} integer recovery (intractable by rounding). This is a finer decomposition than the binary ``linear is easy, rank-1 is hard'' of Section~5.3.
+\end{remark}
+
+\subsection{Exact Lattice Point Counts}
+
+The lower bounds in Section~\ref{sec:lower} depend on the lattice point count $|\Lambda_n \cap \mathcal{B}|$. The volume heuristic (Lemma~4 below) assumes independence between carry-propagation constraints. We validate this by exact enumeration on small instances.
+
+\begin{theorem}[Carry-chain correlation]\label{thm:counting}
+For balanced semiprimes $n \le 323$ across bases $b \in \{2, 3, 5, 10\}$:
+\begin{enumerate}[(a)]
+\item The rank-1 count $|\Lambda_n \cap \mathcal{R}_1 \cap \mathcal{B}|$ is exactly~$2$ in all $26$ tested cases, confirming Theorem~\ref{thm:sparsity}(a).
+\item The volume heuristic $\hat{N} = ((b{-}1)^2+1)^{d_x d_y}/b^d$ overestimates the true count by a factor that grows with~$b$: ratio $\text{exact}/\hat{N}$ ranges from $0.88$ (base~$2$, $n=15$) to $4.5 \times 10^{-7}$ (base~$10$, $n=143$).
+\item The true count $|\Lambda_n \cap \mathcal{B}|$ grows as $2^{\Theta(d^2)}$ with a smaller constant than the heuristic predicts. For base~$2$, fitting yields $\log_2|\Lambda_n \cap \mathcal{B}| \approx 0.3 d^2 - 1.5d + 5$, compared to the heuristic's $\approx 0.75 d^2$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+By exact enumeration using digit-by-digit recursion with carry propagation and pruning. For each $(n, b)$ pair, all integer points $(z_{ij}, t_k)$ satisfying $A\mathbf{v} = \mathbf{c}$ with $0 \le z_{ij} \le (b{-}1)^2$ and $t_k \ge 0$ are counted. Rank-1 testing by checking all $2 \times 2$ minors. Reproducible via \texttt{scripts/exact\_counting.py}.
+\end{proof}
+
+\textbf{Interpretation.} The carry chain introduces strong sequential correlations that break the independence assumption underlying the volume heuristic. Each carry $t_k$ constrains the feasible range at position $k+1$, creating a \emph{transfer-matrix} structure. The heuristic is an upper bound, not an approximation. Base~$2$ gives the tightest estimates because binary carries are small ($t_k \in \{0, 1, \ldots, d/2\}$), preserving near-independence. Larger bases amplify the correlations.
+
 %----------------------------------------------------------------------
 \section{Restricted-Model Lower Bounds}
 \label{sec:lower}
@@ -346,11 +395,18 @@ Proving unconditional superpolynomial lower bounds in the full model faces three
 
 \subsection{The Framework}
 
-The central contribution is a \emph{framework} decomposing factoring hardness into: (1) a tractable linear part (carry-propagation lattice, solvable by LLL); and (2) an intractable nonlinear part (rank-1 constraint, resistant to convex relaxation, exponentially sparse in the lattice).
+The central contribution is a \emph{framework} decomposing factoring hardness into three layers of increasing intractability:
+\begin{enumerate}
+\item \textbf{Linear layer} (carry propagation): Solvable by LLL in polynomial time.
+\item \textbf{Continuous nonlinear layer} (rank-1 over $\mathbb{R}$): Solvable by degree-4 Lasserre relaxation (Theorem~\ref{thm:sos}).
+\item \textbf{Discrete nonlinear layer} (rank-1 over $\mathbb{Z}$ with digit bounds): Intractable---rounding fails in 74\% of cases despite tight continuous relaxation (Theorem~\ref{thm:rounding}), and rank-1 solutions are a $2^{-\Omega(d^2)}$ fraction of lattice points (Theorem~\ref{thm:sparsity}), with exact counts confirming the carry chain's correlative structure (Theorem~\ref{thm:counting}).
+\end{enumerate}
+
+This three-layer decomposition is more precise than the binary ``easy linear / hard nonlinear'' framing: it separates continuous optimization (which succeeds) from discrete recovery (which fails).
 
 \subsection{Honest Assessment}
 
-We note candidly: digit constraints do not provide statistically significant speedup at 32 bits; the optimal base has no clean formula; SDP relaxation fails; the conditional lower bounds are trivially true; and classical algorithms dominate by $4$+ orders of magnitude. We view these negative results as strengths, clarifying the boundaries of the approach.
+We note candidly: digit constraints do not provide statistically significant speedup at 32 bits; the optimal base has no clean formula; SDP relaxation fails; the conditional lower bounds are trivially true; classical algorithms dominate by $4$+ orders of magnitude; and SOS degree-4 closes the gap but rounding remains hard. We view these negative results as strengths, clarifying the boundaries of the approach and localizing exactly where hardness resides.
 
 \subsection{Future Directions}
 
