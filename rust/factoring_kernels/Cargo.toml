@@ -1,0 +1,11 @@
+[package]
+name = "factoring_kernels"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "factoring_kernels"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.22", features = ["extension-module"] }
