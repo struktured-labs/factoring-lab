@@ -16,3 +16,7 @@ setenv.sh
 *~
 reports/*.csv
 reports/*.parquet
+rust/*/target/
+*.so
+*.dylib
+*.dll
