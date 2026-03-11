@@ -6,7 +6,7 @@ import argparse
 import json
 import sys
 
-from factoring_lab.algorithms import TrialDivision, PollardRho, PollardPM1
+from factoring_lab.algorithms import TrialDivision, PollardRho, PollardPM1, ECM
 from factoring_lab.benchmarks.runner import ExperimentConfig, run_experiment
 from factoring_lab.metrics.export import export_csv
 
@@ -15,6 +15,7 @@ ALL_ALGORITHMS = {
     "trial_division": TrialDivision,
     "pollard_rho": PollardRho,
     "pollard_pm1": PollardPM1,
+    "ecm": ECM,
 }
 
 FAMILIES = ["balanced", "unbalanced", "smooth_pm1", "random"]
