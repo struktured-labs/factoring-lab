@@ -1,0 +1,19 @@
+encoding,bits,N,runtime_seconds,success,factor,notes
+circuit_sat,12,1927,0.0232,True,41,circuit SAT solved
+smt_convolution_raw,12,1927,0.0065,True,41,Z3 solved (smt_convolution_raw)
+smt_convolution_b8,12,1927,0.0061,True,41,Z3 solved (smt_convolution_b8)
+circuit_sat,16,25591,0.0766,True,157,circuit SAT solved
+smt_convolution_raw,16,25591,0.0093,True,157,Z3 solved (smt_convolution_raw)
+smt_convolution_b16,16,25591,0.0092,True,157,Z3 solved (smt_convolution_b16)
+circuit_sat,20,370817,0.1046,True,601,circuit SAT solved
+smt_convolution_raw,20,370817,0.0242,True,601,Z3 solved (smt_convolution_raw)
+smt_convolution_b32,20,370817,0.0193,True,601,Z3 solved (smt_convolution_b32)
+circuit_sat,24,8998631,0.7387,True,2963,circuit SAT solved
+smt_convolution_raw,24,8998631,0.0727,True,2963,Z3 solved (smt_convolution_raw)
+smt_convolution_b64,24,8998631,0.0793,True,2963,Z3 solved (smt_convolution_b64)
+circuit_sat,28,127285073,0.9829,True,10477,circuit SAT solved
+smt_convolution_raw,28,127285073,0.0758,True,10477,Z3 solved (smt_convolution_raw)
+smt_convolution_b128,28,127285073,0.175,True,10477,Z3 solved (smt_convolution_b128)
+circuit_sat,32,2369625997,3.9988,True,48541,circuit SAT solved
+smt_convolution_raw,32,2369625997,3.539,True,48541,Z3 solved (smt_convolution_raw)
+smt_convolution_b256,32,2369625997,2.7644,True,48541,Z3 solved (smt_convolution_b256)
