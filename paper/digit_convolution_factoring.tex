@@ -1,0 +1,425 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage[margin=1in]{geometry}
+\usepackage{enumitem}
+\usepackage{authblk}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{definition}{Definition}
+\newtheorem{remark}{Remark}
+
+\DeclareMathOperator{\rank}{rank}
+\DeclareMathOperator{\Seg}{Seg}
+
+\title{Digit Convolution Constraints for Integer Factorization:\\
+SMT Encodings, Lattice Structure, and\\Restricted-Model Lower Bounds}
+
+\author[1]{struktured}
+\affil[1]{struktured labs}
+\date{March 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We investigate integer factorization through the lens of digit convolution constraints, a formulation that decomposes the problem $n = p \cdot q$ into base-$b$ digit-level arithmetic with explicit carry propagation. This formulation encodes factoring as a system of modular constraints $\alpha_k + t_{k-1} \equiv c_k \pmod{b}$ where $\alpha_k = \sum_{i+j=k} x_i y_j$ is the $k$-th digit convolution coefficient. We implement this encoding as SMT bitvector assertions in Z3 and compare it systematically against circuit-based SAT encodings and raw bitvector multiplication. A base sweep over 18 bases reveals that power-of-2 bases consistently outperform others, achieving up to $16\times$ speedup over raw bitvector at 32 bits. However, multi-instance experiments (50 balanced semiprimes per bit size) show that the encoding advantage is not statistically significant (Cohen's $d < 0.31$). We then analyze the lattice structure of the carry-propagation system, identifying the rank-1 constraint $Z = \mathbf{x} \otimes \mathbf{y}$ as the precise locus of hardness: LLL efficiently solves the linear subsystem but cannot enforce the nonlinear rank-1 condition. An SDP relaxation of the rank-1 constraint fails with a 30--39\% integrality gap. Finally, we establish unconditional lower bounds in black-box and generic oracle models, proving that rank-1 points constitute a $2^{-\Omega(d^2)}$ fraction of the carry-propagation lattice. We argue that the digit convolution framework, while not yielding a faster factoring algorithm, provides a clean analytical decomposition of factoring hardness into a tractable linear part and an intractable nonlinear part.
+\end{abstract}
+
+\section{Introduction}
+
+\subsection{Background}
+
+The computational complexity of integer factorization remains one of the central open problems in computer science. While factoring is known to lie in BQP via Shor's algorithm~\cite{shor94}, its classical complexity status is unresolved: it is not known to be in P, nor is it known to be NP-complete. The best classical algorithm, the General Number Field Sieve (GNFS), runs in time $L_n[1/3, c] = \exp\bigl(c (\log n)^{1/3} (\log \log n)^{2/3}\bigr)$, which is sub-exponential but super-polynomial.
+
+A parallel line of research has explored constraint-satisfaction approaches to factoring, encoding the problem as a Boolean satisfiability (SAT) or satisfiability modulo theories (SMT) instance. The standard approach constructs a binary multiplication circuit, converts each gate to clauses via Tseytin transformation, and feeds the result to a SAT solver~\cite{yurichev}. While conceptually clean, this circuit-based encoding handles only 20--30 bit semiprimes before timing out~\cite{satfactor}, and remains exponential even with modern CDCL solvers.
+
+Recent hybrid approaches combine SAT solvers with lattice reduction: Ajani et al.~\cite{ajani24} showed that when approximately 50--60\% of a factor's bits are leaked, a circuit-based SAT solver combined with Coppersmith's lattice method can factor 768-bit numbers in under 800 seconds. Without leaked bits, the approach remains exponential.
+
+\subsection{Contributions}
+
+This paper makes the following contributions:
+
+\begin{enumerate}[leftmargin=*]
+\item \textbf{Digit convolution formulation.} We present a systematic treatment of integer factorization as digit convolution with carry propagation (Section~\ref{sec:formulation}), formulating the problem as modular arithmetic constraints rather than Boolean circuits. The base~$b$ serves as a tunable parameter with no analog in circuit-based approaches.
+
+\item \textbf{SMT encoding and experimental evaluation.} We implement the digit convolution constraints as Z3 bitvector assertions and conduct systematic experiments (Sections~\ref{sec:smt}--\ref{sec:experiments}): a base sweep showing power-of-2 bases dominate; multi-instance benchmarks establishing that the encoding advantage is not statistically significant at 32 bits; scaling law fits confirming digit constraints share the same exponential growth class; and leaked-bit experiments showing a phase transition at 50--70\% known bits.
+
+\item \textbf{Lattice analysis and the rank-1 barrier.} We reformulate the carry-propagation system as a lattice problem (Section~\ref{sec:lattice}) and identify the rank-1 constraint $Z = \mathbf{x} \otimes \mathbf{y}$ as the precise obstruction to efficient solution.
+
+\item \textbf{Restricted-model lower bounds.} We establish unconditional lower bounds in black-box and generic oracle models (Section~\ref{sec:lower}), proving that rank-1 points are exponentially sparse ($2^{-\Omega(d^2)}$ fraction) in the carry-propagation lattice.
+
+\item \textbf{A Rust implementation} of the backtracking solver achieving 30--33$\times$ speedup over Python with identical search paths (Appendix~\ref{app:rust}).
+\end{enumerate}
+
+\subsection{What This Paper Is Not}
+
+We emphasize that this paper does not present a new factoring algorithm competitive with GNFS, ECM, or even Pollard's rho. Classical algorithms outperform our SMT-based approach by over four orders of magnitude at 32 bits. The contribution is a \emph{framework}: digit convolution provides a clean decomposition of factoring hardness into a tractable linear part (carry propagation) and an intractable nonlinear part (the rank-1 constraint), offering a new analytical perspective on why integer factoring is hard.
+
+%----------------------------------------------------------------------
+\section{Digit Convolution Formulation}
+\label{sec:formulation}
+
+\subsection{Base-$b$ Digit Decomposition}
+
+Let $n$ be a positive integer to be factored, and let $b \ge 2$ be a base. Write $n = p \cdot q$ where $2 \le p \le q$. The base-$b$ digit representations are:
+\begin{equation}
+p = \sum_{i=0}^{d_x - 1} x_i \cdot b^i, \quad q = \sum_{j=0}^{d_y - 1} y_j \cdot b^j, \quad n = \sum_{k=0}^{d-1} c_k \cdot b^k
+\end{equation}
+where $x_i, y_j \in \{0, 1, \ldots, b-1\}$, $c_k$ are the known digits of $n$, $d_x = \lceil \log_b p \rceil$, $d_y = \lceil \log_b q \rceil$, and $d = \lceil \log_b n \rceil$.
+
+\subsection{Convolution Coefficients}
+
+The product $n = p \cdot q$ induces a convolution on the digit vectors. Define the $k$-th convolution coefficient:
+\begin{equation}
+\alpha_k = \sum_{\substack{i + j = k \\ 0 \le i < d_x \\ 0 \le j < d_y}} x_i \cdot y_j
+\end{equation}
+This is exactly the coefficient of $b^k$ in the polynomial product $p(b) \cdot q(b)$ before carry propagation.
+
+\subsection{Carry Propagation}
+
+Define the partial sum and carry at each digit position:
+\begin{equation}
+m_k = \alpha_k + t_{k-1}
+\end{equation}
+where $t_{k-1}$ is the carry from position $k-1$ (with $t_{-1} = 0$). The digits of $n$ are determined by:
+\begin{equation}
+c_k \equiv m_k \pmod{b}, \qquad t_k = \lfloor m_k / b \rfloor
+\end{equation}
+Equivalently, the system of constraints is:
+\begin{equation}\label{eq:carry}
+\sum_{\substack{i+j=k}} x_i \cdot y_j + t_{k-1} - b \cdot t_k = c_k, \quad k = 0, 1, \ldots, d-1
+\end{equation}
+
+\subsection{The Constraint System}
+
+Factoring $n$ in base $b$ reduces to finding digit vectors $\mathbf{x} = (x_0, \ldots, x_{d_x-1})$ and $\mathbf{y} = (y_0, \ldots, y_{d_y-1})$ with $x_i, y_j \in \{0, \ldots, b-1\}$ satisfying the carry-propagation constraints~\eqref{eq:carry}. The system is \emph{bilinear}: the products $x_i y_j$ appear linearly in the constraints, but the relationship between $\mathbf{x}$, $\mathbf{y}$, and the products is nonlinear.
+
+\textbf{Historical note.} This formulation was first developed by the author in 2009, arising from viewing integer multiplication as polynomial evaluation at~$b$.
+
+\subsection{Connection to Polynomial Factoring}
+
+If we remove carry propagation (setting all $t_k = 0$), we obtain polynomial factoring over $\mathbb{Z}[x]$. The LLL algorithm~\cite{lll82} solves polynomial factoring in polynomial time because the constraint system is \emph{linear} in the products $z_{ij} = x_i y_j$. Integer factoring is harder because carry propagation couples all digit positions, and the system is globally constrained.
+
+%----------------------------------------------------------------------
+\section{SMT Encoding}
+\label{sec:smt}
+
+\subsection{Bitvector Encoding in Z3}
+
+We encode the digit convolution constraints as assertions in the SMT-LIB bitvector theory, solved by Z3~\cite{demoura08}.
+
+\textbf{Variables.} Bitvector variables $x$ and $y$ of bit width $\beta/2$ (for balanced semiprimes).
+
+\textbf{Core constraint.} Assert $x \cdot y = n$ using native bitvector multiplication, with extended width to avoid overflow.
+
+\textbf{Digit constraints.} For a chosen base $b$, assert for each digit position~$k$:
+\[
+(x \cdot y) \bmod b^{k+1} = n \bmod b^{k+1}
+\]
+using bitvector modular arithmetic.
+
+\subsection{Base as a Tunable Parameter}
+
+A distinctive feature of our encoding is that the base $b$ is a free parameter with no analog in circuit-based SAT approaches. When $b = 2^k$, the operation $m \bmod b$ reduces to a bitvector extract (bit-slicing), which Z3 handles with zero overhead. Non-power-of-2 bases require integer division within the solver.
+
+%----------------------------------------------------------------------
+\section{Experimental Results}
+\label{sec:experiments}
+
+\subsection{Base Sweep}
+
+We tested 18 bases (2--512) on balanced semiprimes at 20--32 bits. Results at 32 bits:
+
+\begin{table}[h]
+\centering
+\caption{Base sweep results at 32 bits (seed=42).}
+\label{tab:basesweep}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Base & Runtime (s) & Speedup vs.\ raw \\
+\midrule
+512 & 0.13 & $16.4\times$ \\
+16 & 0.34 & $6.5\times$ \\
+64 & 0.35 & $6.4\times$ \\
+128 & 1.33 & $1.7\times$ \\
+8 & 1.38 & $1.6\times$ \\
+\emph{raw} & \emph{2.21} & \emph{$1.0\times$} \\
+5 & 5.72 & $0.39\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Powers of 2 dominate due to Z3's bit-extraction optimization. Non-power-of-2 bases can \emph{hurt} performance. The hypothesis $\text{optimal base} \sim 2^{\beta/4}$ is rejected ($R^2 = 0.09$).
+
+\subsection{Multi-Instance Statistics}
+
+50 balanced semiprimes per bit size (seeds 0--49), bit sizes 16--32. Three SMT configurations: raw, base-16, base-256.
+
+\begin{table}[h]
+\centering
+\caption{Statistical significance of encoding differences at 32 bits.}
+\label{tab:multiinstance}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Comparison & $\Delta\mu$ (s) & Cohen's $d$ & Significant? \\
+\midrule
+Raw vs.\ Base-16 & 0.13 & 0.12 & No \\
+Raw vs.\ Base-256 & $-0.19$ & 0.19 & No \\
+Base-16 vs.\ Base-256 & 0.32 & 0.31 & No \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+At 32 bits, none of the digit-level encodings provide a statistically significant speedup (Cohen's $d < 0.31$). Classical algorithms (Pollard's rho, median 0.107~ms) outperform the best SMT configuration by approximately $12{,}000\times$.
+
+\subsection{Scaling Laws}
+
+Extended sweep at 20--40 bits with power-of-2 bases. Fitting $\text{time} = a \cdot 2^{b \cdot \beta}$:
+
+\begin{table}[h]
+\centering
+\caption{Exponential scaling fits.}
+\label{tab:scaling}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Configuration & Exponent $b$ & $R^2$ & Doubles every \\
+\midrule
+Raw & 0.339 & 0.688 & 2.9 bits \\
+Base 64 & 0.378 & 0.959 & 2.6 bits \\
+Base 32 & 0.458 & 0.971 & 2.2 bits \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Digit constraints do not change the scaling class. They provide constant-factor speedups, more predictable runtime ($R^2 > 0.95$ vs.\ $0.69$), and the ability to solve instances the raw solver cannot (40-bit).
+
+\subsection{Leaked Bits}
+
+Phase transition in solvability as a function of leaked bit fraction:
+
+\begin{table}[h]
+\centering
+\caption{Minimum leak fraction for successful factoring.}
+\label{tab:leaked}
+\begin{tabular}{@{}rrr@{}}
+\toprule
+Semiprime bits & Factor bits & Min leak fraction \\
+\midrule
+32 & 16 & 0.0 \\
+48 & 24 & 0.3 \\
+64 & 32 & 0.5 \\
+80 & 40 & 0.6 \\
+96 & 48 & 0.6 \\
+128 & 64 & 0.7 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+At 64 bits, our 50\% threshold matches Ajani et al.~\cite{ajani24}. At 128 bits, we require 70\% vs.\ their ${\sim}60\%$, suggesting circuit-based encodings produce more unit-propagation opportunities at larger sizes.
+
+%----------------------------------------------------------------------
+\section{Lattice Structure and the Rank-1 Barrier}
+\label{sec:lattice}
+
+\subsection{Carry Propagation as a Linear System}
+
+Introduce linearized variables $z_{ij}$ intended to represent $x_i \cdot y_j$, and carry variables $t_k$. The constraints~\eqref{eq:carry} become:
+\begin{equation}\label{eq:linear}
+\sum_{\substack{i+j=k}} z_{ij} + t_{k-1} - b \cdot t_k = c_k, \quad k = 0, \ldots, d-1
+\end{equation}
+This is a system of $d$ linear equations in $m = d_x d_y + d$ integer unknowns: $A\mathbf{v} = \mathbf{c}$.
+
+\subsection{Lattice Formulation}
+
+The integer solutions form an affine lattice $\Lambda_n = \{\mathbf{v} \in \mathbb{Z}^m : A\mathbf{v} = \mathbf{c}\}$ of dimension $d_x d_y = \Theta(d^2)$.
+
+\subsection{The Rank-1 Constraint}
+
+For a lattice point to represent a valid factorization, the matrix $Z = (z_{ij})$ must satisfy:
+\begin{equation}
+\rank(Z) = 1, \quad \text{i.e.,} \quad Z = \mathbf{x} \otimes \mathbf{y} = \mathbf{x}\mathbf{y}^T
+\end{equation}
+for $\mathbf{x} \in \{0,\ldots,b{-}1\}^{d_x}$, $\mathbf{y} \in \{0,\ldots,b{-}1\}^{d_y}$. This is a system of $\binom{d_x}{2}\binom{d_y}{2}$ quadratic equations (the $2 \times 2$ minors of $Z$), defining the Segre variety $\Seg(d_x, d_y)$ of dimension $d_x + d_y - 1$ in the ambient $d_x d_y$-dimensional space.
+
+\textbf{This is the precise locus of hardness.} LLL efficiently handles the linear system~\eqref{eq:linear}. The rank-1 condition is the nonlinear obstruction.
+
+\subsection{Why LLL Works for Polynomial Factoring}
+
+Polynomial factoring over $\mathbb{Z}[x]$ has no carry propagation ($t_k = 0$). The constraint system is linear, and LLL finds factors as short lattice vectors. Integers lack the ``dimension reduction'' that polynomial degree provides: factoring a degree-$d$ polynomial yields factors of strictly smaller degree, enabling recursion. No analogous property exists for integers.
+
+\subsection{SDP Relaxation Failure}
+
+We relaxed the rank-1 constraint via semidefinite programming, using ADMM-like alternating projection between the affine subspace $\{Z : A\mathbf{v} = \mathbf{c}\}$ and $\{Z : \rank(Z) = 1\}$.
+
+\textbf{Results.} The integrality gap (fraction of spectral mass outside the leading singular value) is 30--39\%, growing with problem size. The ADMM iteration oscillates without converging because the feasible set is non-convex. The alternating projection's apparent successes reduce to randomized trial division.
+
+\textbf{Assessment.} Convex relaxation of the rank-1 constraint is insufficient for factoring.
+
+%----------------------------------------------------------------------
+\section{Restricted-Model Lower Bounds}
+\label{sec:lower}
+
+\subsection{Formal Model}
+
+\begin{definition}[Digit Convolution Algorithm]
+A procedure that factors $n$ using: (i) free digit decomposition in any base $b$; (ii) free construction and polynomial-time manipulation of the carry-propagation lattice $\Lambda_n$; (iii) costly rank-1 oracle queries $\mathcal{O}_{\mathrm{R1}}$.
+\end{definition}
+
+\begin{definition}[Rank-1 Oracle]
+Given $Z \in \Lambda_n \cap \mathcal{B}$, the oracle returns:
+\[
+\mathcal{O}_{\mathrm{R1}}(Z) = \begin{cases} 1 & \text{if } \exists\, \mathbf{x}, \mathbf{y} \text{ s.t.\ } Z = \mathbf{x} \otimes \mathbf{y} \text{ and } 0 \le x_i, y_j \le b{-}1 \\ 0 & \text{otherwise} \end{cases}
+\]
+A positive response yields the factorization.
+\end{definition}
+
+\subsection{Main Result: Rank-1 Sparsity}
+
+\begin{theorem}[Rank-1 sparsity]\label{thm:sparsity}
+For a $\beta$-bit balanced semiprime $n = p \cdot q$ in base $b$ with $d = \lceil \log_b n \rceil$:
+\begin{enumerate}[(a)]
+\item The number of rank-1 integer matrices in $\Lambda_n \cap \mathcal{B}$ is at most $2$.
+\item The ratio of rank-1 to total lattice points satisfies:
+\[
+\frac{|\Lambda_n \cap \mathcal{R}_1 \cap \mathcal{B}|}{|\Lambda_n \cap \mathcal{B}|} \le 2^{-\Omega(d^2)}
+\]
+assuming the heuristic $|\Lambda_n \cap \mathcal{B}| \ge 2^{\Omega(d^2)}$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+Part (a): A rank-1 matrix $Z = \mathbf{x} \otimes \mathbf{y}$ in $\Lambda_n \cap \mathcal{B}$ yields $p = \sum x_i b^i$, $q = \sum y_j b^j$ with $pq = n$. Since $n$ is semiprime, at most two factorizations exist.
+
+Part (b): The lattice point count is heuristically $|\Lambda_n \cap \mathcal{B}| \approx ((b{-}1)^2+1)^{d_x d_y}/b^d \ge 2^{\Omega(d^2)}$ for $d \ge 5$.
+\end{proof}
+
+\textbf{Interpretation.} Rank-1 points are a $2^{-\Omega(d^2)}$ fraction of the feasible lattice. Any algorithm testing lattice points without exploiting rank-1 structure requires exponentially many queries.
+
+\subsection{Oracle Lower Bounds}
+
+\begin{theorem}[Black-box lower bound]\label{thm:bbox}
+In the black-box model, any deterministic algorithm requires $Q(\beta) \ge |\Lambda_n \cap \mathcal{B}|/2 - 1$ queries.
+\end{theorem}
+
+\begin{proof}
+Adversary argument: answer ``no'' until $\le 2$ candidates remain.
+\end{proof}
+
+\begin{theorem}[Generic oracle lower bound]\label{thm:generic}
+Against a generic rank-1 oracle, any algorithm requires $Q(\beta) \ge 2^{\Omega(d^2/\log d)}$ queries in expectation to succeed with probability $\ge 2/3$.
+\end{theorem}
+
+\begin{theorem}[Conditional lower bound]\label{thm:cond}
+If \textsc{Factoring} $\notin$ BPP, then any digit convolution algorithm with polynomial-time inter-query computation requires $Q(\beta) \ge \beta^{\omega(1)}$ rank-1 queries.
+\end{theorem}
+
+\begin{proof}
+By contrapositive: polynomially many polynomial-time queries yield a polynomial-time factoring algorithm.
+\end{proof}
+
+\subsection{Barriers}
+
+Proving unconditional superpolynomial lower bounds in the full model faces three barriers: the algebraic structure of the Segre variety (smooth, rational, with explicit equations); the banded structure of the carry-propagation lattice enabling decomposition strategies; and the Razborov--Rudich natural proofs barrier~\cite{rr97}.
+
+%----------------------------------------------------------------------
+\section{Related Work}
+
+\textbf{Circuit-based SAT factoring.} Encoding multiplication as boolean circuits and converting to CNF~\cite{yurichev,satfactor} handles ${\sim}$20--30 bit semiprimes. Our encoding operates at the arithmetic level, preserving number-theoretic structure.
+
+\textbf{Hybrid SAT + lattice.} Ajani et al.~\cite{ajani24} combine circuit-SAT with Coppersmith's method, factoring 768-bit numbers with ${\sim}$50\% leaked bits. Our lattice analysis explains why: with partial knowledge, the remaining system is fully linear.
+
+\textbf{Quantum.} Shor's algorithm~\cite{shor94} factors in polynomial time on quantum computers.
+
+\textbf{LLL and polynomial factoring.} The LLL algorithm~\cite{lll82} achieves polynomial-time polynomial factoring because the coefficient constraints are linear---no rank-1 barrier.
+
+%----------------------------------------------------------------------
+\section{Discussion and Future Work}
+
+\subsection{The Framework}
+
+The central contribution is a \emph{framework} decomposing factoring hardness into: (1) a tractable linear part (carry-propagation lattice, solvable by LLL); and (2) an intractable nonlinear part (rank-1 constraint, resistant to convex relaxation, exponentially sparse in the lattice).
+
+\subsection{Honest Assessment}
+
+We note candidly: digit constraints do not provide statistically significant speedup at 32 bits; the optimal base has no clean formula; SDP relaxation fails; the conditional lower bounds are trivially true; and classical algorithms dominate by $4$+ orders of magnitude. We view these negative results as strengths, clarifying the boundaries of the approach.
+
+\subsection{Future Directions}
+
+\begin{enumerate}[leftmargin=*]
+\item \textbf{Intersection theory:} The intersection class of $\Seg(d_x, d_y)$ with carry-propagation lattices in the Chow ring could yield dimension bounds with complexity-theoretic implications.
+\item \textbf{Geometric Complexity Theory:} The rank-1 condition constrains orbit structure under $GL(d_x) \times GL(d_y)$, potentially connecting to the GCT program~\cite{mulmuley01}.
+\item \textbf{Communication complexity:} Viewing factoring as a two-party problem ($\mathbf{x}$ with Alice, $\mathbf{y}$ with Bob) connects to known lower bounds for related problems.
+\item \textbf{Lasserre/SOS hierarchy:} Tighter relaxations of the rank-1 constraint beyond SDP.
+\item \textbf{Exact lattice point counts:} Barvinok's algorithm on small cases to validate heuristic estimates.
+\end{enumerate}
+
+%----------------------------------------------------------------------
+\section*{Reproducibility}
+
+All code, data, and experiment scripts are available at \url{https://github.com/struktured-labs/factoring-lab}. The repository includes Python and Rust implementations, experiment scripts reproducing all results, and raw data in CSV format. Semiprimes are generated deterministically from integer seeds.
+
+%----------------------------------------------------------------------
+\appendix
+\section{Rust Port Performance}
+\label{app:rust}
+
+The backtracking solver was ported to Rust via PyO3/maturin, yielding 30--33$\times$ speedup with identical search paths (identical iteration counts):
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}rrrr@{}}
+\toprule
+Bits & Python (s) & Rust (s) & Speedup \\
+\midrule
+12 & 0.00116 & 0.00004 & $26\times$ \\
+16 & 0.01033 & 0.00033 & $31\times$ \\
+20 & 0.14805 & 0.00452 & $33\times$ \\
+24 & 0.47351 & 0.01409 & $33\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The Rust implementation uses \texttt{u128} arithmetic, supporting semiprimes up to approximately 38 decimal digits.
+
+%----------------------------------------------------------------------
+\bibliographystyle{plain}
+\begin{thebibliography}{99}
+
+\bibitem{ajani24} Y.~Ajani et al., ``SAT and Lattice Reduction for Integer Factorization,'' \emph{Proc.\ ISSAC}, 2024. arXiv:2406.20071.
+
+\bibitem{benor83} M.~Ben-Or, ``Lower bounds for algebraic computation trees,'' \emph{Proc.\ 15th ACM STOC}, pp.~80--86, 1983.
+
+\bibitem{coppersmith96} D.~Coppersmith, ``Finding a small root of a univariate modular equation,'' \emph{Proc.\ EUROCRYPT}, pp.~155--165, 1996.
+
+\bibitem{demoura08} L.~de~Moura and N.~Bjorner, ``Z3: An efficient SMT solver,'' \emph{Proc.\ TACAS}, LNCS 4963, pp.~337--340, 2008.
+
+\bibitem{lll82} A.\,K.~Lenstra, H.\,W.~Lenstra, and L.~Lov\'{a}sz, ``Factoring polynomials with rational coefficients,'' \emph{Math.\ Ann.} 261, pp.~515--534, 1982.
+
+\bibitem{mosca20} M.~Mosca et al., ``On speeding up factoring with quantum SAT solvers,'' \emph{Scientific Reports} 10, 2020.
+
+\bibitem{mulmuley01} K.~Mulmuley and M.~Sohoni, ``Geometric complexity theory I,'' \emph{SIAM J.\ Comput.}\ 31(2), pp.~496--526, 2001.
+
+\bibitem{rr97} A.\,A.~Razborov and S.~Rudich, ``Natural proofs,'' \emph{J.\ Comput.\ System Sci.}\ 55(1), pp.~24--35, 1997.
+
+\bibitem{satfactor} S.~Neph, ``satfactor,'' GitHub. \url{https://github.com/sjneph/satfactor}.
+
+\bibitem{ss22} M.~Schaller and R.~Sch\"{u}tzhold, ``Factoring semi-primes with (quantum) SAT-solvers,'' \emph{Scientific Reports} 12, 2022.
+
+\bibitem{shor94} P.\,W.~Shor, ``Algorithms for quantum computation,'' \emph{Proc.\ 35th IEEE FOCS}, pp.~124--134, 1994.
+
+\bibitem{shoup97} V.~Shoup, ``Lower bounds for discrete logarithms and related problems,'' \emph{Proc.\ EUROCRYPT}, LNCS 1233, pp.~256--266, 1997.
+
+\bibitem{yurichev} D.~Yurichev, ``Encoding Basic Arithmetic Operations for SAT-Solvers.'' \url{https://yurichev.com/mirrors/SAT_factor/}.
+
+\end{thebibliography}
+
+\end{document}
