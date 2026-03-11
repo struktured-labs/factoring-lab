@@ -12,6 +12,10 @@ from factoring_lab.algorithms.smt_convolution import (
     SMTConvolutionBase10,
     SMTConvolutionBase2,
 )
+from factoring_lab.algorithms.sdp_convolution import (
+    SDPConvolution,
+    AlternatingProjection,
+)
 
 __all__ = [
     "FactoringAlgorithm",
@@ -25,4 +29,6 @@ __all__ = [
     "SMTConvolutionRaw",
     "SMTConvolutionBase10",
     "SMTConvolutionBase2",
+    "SDPConvolution",
+    "AlternatingProjection",
 ]
