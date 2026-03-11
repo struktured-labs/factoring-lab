@@ -3,7 +3,9 @@ name = "factoring-lab"
 version = "0.1.0"
 description = "Research harness for studying classical integer factorization bottlenecks"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "numpy>=2.4.3",
+]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-cov"]

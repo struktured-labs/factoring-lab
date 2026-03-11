@@ -182,6 +182,9 @@ wheels = [
 name = "factoring-lab"
 version = "0.1.0"
 source = { editable = "." }
+dependencies = [
+    { name = "numpy" },
+]
 
 [package.optional-dependencies]
 analysis = [
@@ -197,6 +200,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "matplotlib", marker = "extra == 'analysis'" },
+    { name = "numpy", specifier = ">=2.4.3" },
     { name = "pandas", marker = "extra == 'analysis'" },
     { name = "pyarrow", marker = "extra == 'analysis'" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
