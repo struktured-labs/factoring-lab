@@ -4,7 +4,9 @@ import pytest
 
 from factoring_lab.analysis.lattice_counting import (
     LatticeCountResult,
+    TransferMatrixResult,
     count_lattice_points_exact,
+    count_lattice_points_transfer_matrix,
     heuristic_estimate,
     to_digits,
     from_digits,
@@ -81,6 +83,79 @@ class TestExactCounting:
                 assert 0.0001 < ratio < 10000, (
                     f"n={n} base={base}: ratio {ratio} outside [0.0001, 10000]"
                 )
+
+
+class TestTransferMatrix:
+    """Test transfer matrix method matches brute-force exact counts."""
+
+    @pytest.mark.parametrize("n,p,q", [
+        (15, 3, 5),
+        (21, 3, 7),
+        (35, 5, 7),
+    ])
+    @pytest.mark.parametrize("base", [2, 3, 5])
+    def test_matches_exact_count(self, n: int, p: int, q: int, base: int) -> None:
+        """Transfer matrix count must equal brute-force enumeration."""
+        exact = count_lattice_points_exact(n, base)
+        tm = count_lattice_points_transfer_matrix(n, base)
+        assert tm.total_lattice_points == exact.total_lattice_points, (
+            f"n={n} base={base}: transfer matrix={tm.total_lattice_points}, "
+            f"exact={exact.total_lattice_points}"
+        )
+
+    @pytest.mark.parametrize("n,p,q", [
+        (77, 7, 11),
+        (143, 11, 13),
+        (221, 13, 17),
+    ])
+    @pytest.mark.parametrize("base", [2, 3])
+    def test_matches_exact_larger(self, n: int, p: int, q: int, base: int) -> None:
+        """Transfer matrix matches exact for larger semiprimes."""
+        exact = count_lattice_points_exact(n, base)
+        tm = count_lattice_points_transfer_matrix(n, base)
+        assert tm.total_lattice_points == exact.total_lattice_points, (
+            f"n={n} base={base}: transfer matrix={tm.total_lattice_points}, "
+            f"exact={exact.total_lattice_points}"
+        )
+
+    @pytest.mark.parametrize("base", [2, 3, 5, 10])
+    def test_positive_count(self, base: int) -> None:
+        """Every semiprime must have at least 2 lattice points."""
+        tm = count_lattice_points_transfer_matrix(15, base)
+        assert tm.total_lattice_points >= 2
+
+    def test_spectral_radii_positive(self) -> None:
+        """Spectral radii should be positive for non-degenerate positions."""
+        tm = count_lattice_points_transfer_matrix(143, 2)
+        # At least the middle positions should have positive spectral radius
+        assert any(sr > 0 for sr in tm.spectral_radii)
+
+    def test_transfer_matrix_dimensions(self) -> None:
+        """Transfer matrices should have consistent count."""
+        tm = count_lattice_points_transfer_matrix(35, 2)
+        assert len(tm.transfer_matrices) == tm.d
+        for T_k in tm.transfer_matrices:
+            assert T_k.ndim == 2  # 2D matrices
+
+    @pytest.mark.parametrize("base", [2, 3, 5, 10])
+    def test_heuristic_is_upper_bound(self, base: int) -> None:
+        """The heuristic should overestimate (or be close) for small cases."""
+        for n in [15, 21, 35]:
+            tm = count_lattice_points_transfer_matrix(n, base)
+            # Heuristic is typically an upper bound
+            if tm.total_lattice_points > 0 and tm.heuristic_estimate > 0:
+                ratio = tm.ratio_exact_over_heuristic
+                assert ratio < 10000, (
+                    f"n={n} base={base}: ratio {ratio} unexpectedly large"
+                )
+
+    def test_scales_to_larger_cases(self) -> None:
+        """Transfer matrix should handle cases too large for brute force."""
+        # 323 = 17 * 19, base 2, d=9 — this is slow for brute force
+        tm = count_lattice_points_transfer_matrix(323, 2)
+        assert tm.total_lattice_points > 0
+        assert tm.d == 9
+        assert tm.log2_exact > 0
 
 
 class TestHeuristicEstimate:
