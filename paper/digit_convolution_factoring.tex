@@ -59,7 +59,7 @@ This paper makes the following contributions:
 
 \item \textbf{Information-theoretic carry channel analysis.}  Using the forward--backward algorithm and the Diaconis--Fulman eigenvalue theory~\cite{diaconis09}, we prove the carry chain reveals only $\Theta(d \log d)$ bits of a $\Theta(d^2)$-bit lattice---a vanishing fraction $O(\log d / d)$ (Theorem~\ref{thm:channel}).
 
-\item \textbf{SOS rounding hardness.}  Degree-4 SOS closes the continuous gap to $<0.1\%$, but we prove sequential rounding fails with probability $2^{-\Theta(d^2)}$ (Theorem~\ref{thm:rounding}).  This is the first certification-vs-search gap for a number-theoretic problem.
+\item \textbf{SOS rounding hardness.}  Degree-4 SOS closes the continuous gap to $<0.1\%$, but we prove sequential rounding fails with probability $2^{-\Theta(d^2)}$ (Theorem~\ref{thm:rounding}).  To our knowledge, this is the first explicit certification-vs-search separation demonstrated in a number-theoretic recovery formulation.
 
 \item \textbf{Restricted-model lower bounds.} We establish unconditional lower bounds in black-box and generic oracle models (Section~\ref{sec:lower}), proving that rank-1 points are exponentially sparse ($2^{-\Omega(d^2)}$ fraction) in the carry-propagation lattice.
 
@@ -256,7 +256,7 @@ For a lattice point to represent a valid factorization, the matrix $Z = (z_{ij})
 \end{equation}
 for $\mathbf{x} \in \{0,\ldots,b{-}1\}^{d_x}$, $\mathbf{y} \in \{0,\ldots,b{-}1\}^{d_y}$. This is a system of $\binom{d_x}{2}\binom{d_y}{2}$ quadratic equations (the $2 \times 2$ minors of $Z$), defining the Segre variety $\Seg(d_x, d_y)$ of dimension $d_x + d_y - 1$ in the ambient $d_x d_y$-dimensional space.
 
-\textbf{This is the precise locus of hardness.} LLL efficiently handles the linear system~\eqref{eq:linear}. The rank-1 condition is the nonlinear obstruction.
+\textbf{Within this representation, the rank-1 constraint is the precise locus of hardness.} LLL efficiently handles the linear system~\eqref{eq:linear}. The rank-1 condition is the nonlinear obstruction.
 
 \subsection{Why LLL Works for Polynomial Factoring}
 
@@ -341,7 +341,11 @@ where $|F_k|$ is the number of carry-compatible $z$-value tuples at position $k$
 At each position $k$, given the correct carry-in $t_{k-1}$, there are $|F_k| = C(n_k \cdot (b{-}1)^2/2,\, n_k,\, (b{-}1)^2)$ valid $z$-value tuples (bounded compositions of a target into $n_k$ parts).  Only one tuple matches the true factorization.  The per-step success probability is $1/|F_k|$.  Since $|F_k|$ peaks at $\binom{n_k}{\lfloor n_k/2 \rfloor} \approx 2^{n_k}$ for the middle positions, the product is $2^{-\sum_k \log_2 |F_k|} = 2^{-\Theta(d^2)}$.
 \end{proof}
 
-\textbf{Certification vs.\ search.}  The SOS gap measures \emph{certification}: how well the relaxation certifies that a solution exists.  Rounding measures \emph{search}: extracting the solution from the certificate.  Our result demonstrates a $\Theta(d^2)$-bit gap between certification (nearly perfect) and search (exponentially hard).  This is the first such demonstration for a number-theoretic problem, paralleling results for planted clique~\cite{barak16} and tensor PCA~\cite{hopkins15}.
+\textbf{Certification vs.\ search.}  The SOS gap measures \emph{certification}: how well the relaxation certifies that a solution exists.  Rounding measures \emph{search}: extracting the solution from the certificate.  Our result demonstrates a $\Theta(d^2)$-bit gap between certification (nearly perfect) and sequential search (exponentially hard).  To our knowledge, this is the first such demonstration for a number-theoretic recovery formulation, paralleling results for planted clique~\cite{barak16} and tensor PCA~\cite{hopkins15}.
+
+\begin{remark}
+Theorem~\ref{thm:rounding} applies to \emph{sequential} rounding procedures that fix digits in order without backtracking.  It does not rule out all polynomial-time extraction procedures from SOS relaxations---for instance, rounding schemes that exploit global correlations in the moment matrix or process digits in a non-sequential order.  Extending the lower bound to arbitrary polynomial-time rounding remains an open problem; see Section~\ref{sec:future} for discussion.
+\end{remark}
 
 %----------------------------------------------------------------------
 \section{Restricted-Model Lower Bounds}
@@ -432,11 +436,12 @@ The central contribution is a \emph{framework} decomposing factoring hardness in
 We note candidly: digit constraints do not provide statistically significant speedup at 32 bits; the optimal base has no clean formula; SDP relaxation fails; the conditional lower bounds are trivially true; and classical algorithms dominate by $4$+ orders of magnitude. We view these negative results as strengths, clarifying the boundaries of the approach.
 
 \subsection{Future Directions}
+\label{sec:future}
 
 \begin{enumerate}[leftmargin=*]
 \item \textbf{Non-sequential rounding hardness:} Theorem~\ref{thm:rounding} covers sequential rounding.  Extending to arbitrary polynomial-time rounding schemes (via pseudo-calibration~\cite{barak16} adapted to the digit convolution setting) would strengthen the certification-vs-search gap to an unconditional SOS lower bound.
 \item \textbf{Intersection theory:} The intersection class of $\Seg(d_x, d_y)$ with carry-propagation lattices in the Chow ring could yield dimension bounds with complexity-theoretic implications.  B\'{e}zout's theorem gives $|\Lambda_n \cap \Seg| \le \binom{d{-}2}{d/2{-}1}$, which is tight at $d = 4$.
-\item \textbf{Geometric Complexity Theory:} The rank-1 condition constrains orbit structure under $GL(d_x) \times GL(d_y)$, potentially connecting to the GCT program~\cite{mulmuley01}.
+\item \textbf{Geometric Complexity Theory:} The rank-1 constraint has a natural interpretation in terms of $GL(d_x) \times GL(d_y)$ orbit structure, though the connection to the GCT program~\cite{mulmuley01} remains distant and unexplored.
 \item \textbf{Communication complexity:} Viewing factoring as a two-party problem ($\mathbf{x}$ with Alice, $\mathbf{y}$ with Bob) connects to known lower bounds for related problems.
 \item \textbf{Analytical spectral constants:} The transfer matrix approach gives numerical constants $\alpha_\ell, \alpha_u$ in Theorem~\ref{thm:transfer}.  Deriving $\alpha = \tfrac{1}{4}$ analytically from the Diaconis--Fulman eigenvalue structure~\cite{diaconis09} would close the gap between lower and upper bounds.
 \end{enumerate}
