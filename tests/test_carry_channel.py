@@ -5,7 +5,10 @@ from math import log2
 
 from factoring_lab.analysis.carry_channel import (
     CarryChannelResult,
+    SpectralBoundResult,
     analyze_carry_channel,
+    compute_spectral_bound,
+    prove_quadratic_scaling,
 )
 from factoring_lab.analysis.lattice_counting import (
     count_lattice_points_transfer_matrix,
@@ -162,3 +165,56 @@ class TestInformationGap:
         assert vals[-1] < vals[0], (
             f"Fraction revealed not decreasing: {vals}"
         )
+
+
+class TestSpectralBound:
+    """Test analytical spectral bounds on lattice point count."""
+
+    @pytest.mark.parametrize("n,p,q", [
+        (15, 3, 5),
+        (77, 7, 11),
+        (323, 17, 19),
+        (1073, 29, 37),
+    ])
+    def test_upper_bound_valid(self, n: int, p: int, q: int) -> None:
+        """Upper bound must be ≥ exact count."""
+        sb = compute_spectral_bound(n, 2)
+        assert sb.log2_exact <= sb.log2_upper_bound + 0.01, (
+            f"Exact {sb.log2_exact} > upper {sb.log2_upper_bound}"
+        )
+
+    @pytest.mark.parametrize("n,p,q", [
+        (15, 3, 5),
+        (77, 7, 11),
+        (323, 17, 19),
+        (1073, 29, 37),
+    ])
+    def test_lower_bound_valid(self, n: int, p: int, q: int) -> None:
+        """Lower bound must be ≤ exact count."""
+        sb = compute_spectral_bound(n, 2)
+        assert sb.log2_lower_bound <= sb.log2_exact + 0.01, (
+            f"Lower {sb.log2_lower_bound} > exact {sb.log2_exact}"
+        )
+
+    @pytest.mark.parametrize("base", [2, 3])
+    def test_alpha_positive(self, base: int) -> None:
+        """Quadratic coefficient α must be positive."""
+        sb = compute_spectral_bound(77, base)
+        assert sb.alpha_fit > 0
+
+    def test_num_terms_profile_triangular(self) -> None:
+        """num_terms should rise then fall (triangular)."""
+        sb = compute_spectral_bound(1073, 2)
+        profile = sb.num_terms_profile
+        # Should peak in the middle
+        peak = max(profile)
+        peak_pos = profile.index(peak)
+        assert sb.d // 4 <= peak_pos <= 3 * sb.d // 4
+
+    def test_quadratic_scaling_proof(self) -> None:
+        """prove_quadratic_scaling should return valid coefficients."""
+        result = prove_quadratic_scaling(base=2)
+        assert result["alpha_empirical"] > 0
+        assert result["alpha_lower"] > 0
+        # Alpha should be roughly 0.25 for base 2
+        assert 0.1 < result["alpha_empirical"] < 0.5
