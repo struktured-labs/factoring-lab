@@ -55,19 +55,19 @@ This paper makes the following contributions:
 
 \item \textbf{Lattice analysis and the rank-1 barrier.} We reformulate the carry-propagation system as a lattice problem (Section~\ref{sec:lattice}) and identify the rank-1 constraint $Z = \mathbf{x} \otimes \mathbf{y}$ as the precise obstruction to efficient solution.
 
-\item \textbf{Transfer matrix spectral analysis with closed-form constant.} We prove $\log_2|\Lambda_n \cap \mathcal{B}| = d^2/4 + O(d)$ for base~2, establishing the exact constant $\alpha = 1/4$ via a row-sum identity and binomial parity argument (Theorem~\ref{thm:transfer}).  For general base~$b$, we derive $\alpha(b) = \log_2((b{-}1)^2+1)/4$.
+\item \textbf{Transfer matrix spectral analysis with closed-form constant (Theorem~A).} We prove $\log_2|\Lambda_n \cap \mathcal{B}| = d^2/4 + O(d)$ for base~2, establishing the exact constant $\alpha = 1/4$ via a row-sum identity (Lemma~\ref{lem:rowsum}) and binomial parity argument (Theorem~\ref{thm:transfer}).  For general base~$b$, we derive $\alpha(b) = \log_2((b{-}1)^2+1)/4$.
 
-\item \textbf{Information-theoretic carry channel analysis.}  Using the forward--backward algorithm and the Diaconis--Fulman eigenvalue theory~\cite{diaconis09}, we prove the carry chain reveals only $\Theta(d \log d)$ bits of a $\Theta(d^2)$-bit lattice---a vanishing fraction $O(\log d / d)$ (Theorem~\ref{thm:channel}).
+\item \textbf{Information-theoretic carry channel analysis (Theorem~B).}  Using the forward--backward algorithm and the Diaconis--Fulman eigenvalue theory~\cite{diaconis09}, we prove the carry chain reveals only $\Theta(d \log d)$ bits of a $\Theta(d^2)$-bit lattice---a vanishing fraction $O(\log d / d)$ (Theorem~\ref{thm:channel}).
 
-\item \textbf{SOS rounding hardness.}  Degree-4 SOS closes the continuous gap to $<0.1\%$, but we prove sequential rounding fails with probability $2^{-\Theta(d^2)}$ (Theorem~\ref{thm:rounding}).  To our knowledge, this is the first explicit certification-vs-search separation demonstrated in a number-theoretic recovery formulation.
+\item \textbf{SOS rounding hardness (Theorem~C).}  Degree-4 SOS closes the continuous gap to $<0.1\%$, but we prove sequential rounding fails with probability $2^{-\Theta(d^2)}$ (Theorem~\ref{thm:rounding}).  To our knowledge, this is the first explicit certification-vs-search separation demonstrated in a number-theoretic recovery formulation.
 
-\item \textbf{Base-dependent spectral landscape.} We prove that base~2 has zero spurious near-rank-1 lattice points ($\sigma_2/\sigma_1 < 0.1$), while base~10 has up to 79\% spurious near-rank-1 points, explaining the failure of nuclear norm minimization in larger bases (Theorem~\ref{thm:spectral}).
+\item \textbf{Base-dependent spectral landscape.} We show that base~2 has zero spurious near-rank-1 lattice points ($\sigma_2/\sigma_1 < 0.1$), while base~10 has up to 79\% spurious near-rank-1 points, explaining the failure of nuclear norm minimization in larger bases (Proposition~\ref{thm:spectral}).
 
 \item \textbf{Blind deconvolution experiment.} SVD of the minimum-norm carry-constrained solution achieves average factor correlation 0.83 (base~10) but 0\% recovery, demonstrating a spectral certification-vs-search gap.
 
 \item \textbf{Moment indistinguishability.} At linear budget ($k = d$ moment entries), 26--43\% of semiprime pairs share identical degree-4 moment entries, with agreement increasing with $d$, supporting bounded-view rounding hardness.
 
-\item \textbf{Restricted-model lower bounds.} We establish unconditional lower bounds in black-box and generic oracle models (Section~\ref{sec:lower}), proving that rank-1 points are exponentially sparse ($2^{-\Omega(d^2)}$ fraction) in the carry-propagation lattice.
+\item \textbf{Restricted-model lower bounds (Theorem~D and Corollaries).} We establish that rank-1 points are exponentially sparse ($2^{-\Omega(d^2)}$ fraction) in the carry-propagation lattice (Theorem~\ref{thm:sparsity}), from which unconditional lower bounds in black-box and generic oracle models follow as corollaries (Section~\ref{sec:lower}).
 
 \item \textbf{A Rust implementation} of the backtracking solver achieving 30--33$\times$ speedup over Python with identical search paths (Appendix~\ref{app:rust}).
 \end{enumerate}
@@ -276,7 +276,7 @@ We relaxed the rank-1 constraint via semidefinite programming, using ADMM-like a
 
 \textbf{Assessment.} Convex relaxation of the rank-1 constraint is insufficient for factoring.
 
-\subsection{Transfer Matrix and Carry Channel Analysis}
+\subsection{The Lattice Has $2^{d^2/4}$ Points (Theorem~A)}
 
 The carry-propagation constraints~\eqref{eq:linear} exhibit Markov chain structure.  At each digit position $k$, define the \emph{transfer matrix}
 \[
@@ -286,7 +286,7 @@ counting the bounded integer compositions.  The total lattice point count is the
 \[
 |\Lambda_n \cap \mathcal{B}| = \bigl(T_{d-1} \cdots T_1 \cdot T_0\bigr)[0, 0]
 \]
-This replaces the heuristic estimate of Theorem~\ref{thm:sparsity}(b) with a \textbf{rigorous, polynomial-time computation}: $O(d \cdot S^2)$ where $S = \max_k t_k^{\max}$.
+This provides a \textbf{rigorous, polynomial-time computation} of the lattice point count: $O(d \cdot S^2)$ where $S = \max_k t_k^{\max}$.  The result feeds directly into the sparsity analysis of Section~\ref{sec:lower}.
 
 \begin{theorem}[Exact quadratic scaling constant]\label{thm:transfer}
 For base-$b$ balanced semiprimes with $d_x = d_y = m$ and $d = 2m - 1$ digit positions:
@@ -351,7 +351,7 @@ For general base $b$, Lemma~\ref{lem:rowsum}(b) gives $\log_2 \rho(T_k) = n_k \l
 
 \textbf{Spectral structure.}  The per-position entropy rate $h_k = \log_2 \rho(T_k) = n_k - 1$ (base~2) exhibits a universal \emph{diamond profile}: rising from $h_0 = 0$ to $h_{d/2} = m - 1 \approx d/2$ and falling symmetrically, with total $\sum h_k = d^2/4 + O(d)$ as proven above.  For base~2, the Diaconis--Fulman theory~\cite{diaconis09} shows the eigenvalues of $T_k$ (normalized) are $1, \tfrac{1}{2}, \tfrac{1}{4}, \ldots, \tfrac{1}{2^{n_k-1}}$, with spectral gap $\tfrac{1}{2}$.
 
-\subsection{Carry Channel Capacity Bound}
+\subsection{Carries Reveal $O(d \log d)$ of $d^2/4$ Bits (Theorem~B)}
 
 We formalize the information content of the carry chain via the forward--backward algorithm (HMM inference on the Markov chain).  Let $Z$ be a uniform random lattice point in $\Lambda_n \cap \mathcal{B}$ and $T(Z) = (t_0, \ldots, t_{d-1})$ its carry sequence.
 
@@ -380,7 +380,7 @@ Part (b): Direct subtraction using Theorem~\ref{thm:transfer}.
 
 \textbf{Interpretation.}  The carry chain is a ``thin channel'' connecting the linear and nonlinear worlds: it transmits $\Theta(d \log d)$ bits from a $\Theta(d^2)$-bit lattice.  Even with \emph{perfect} carry knowledge, $2^{\Theta(d^2)}$ lattice points remain, of which exactly~2 are rank-1.
 
-\subsection{SOS Hierarchy and Rounding Hardness}
+\subsection{Extraction Fails at $2^{-d^2/4}$ (Theorem~C)}
 
 We applied the Lasserre/SOS hierarchy at degrees~2 and~4.  Degree-4 SOS closes the continuous relaxation gap to $<0.1\%$ in 95\% of instances---the moment matrix ``knows'' the factorization.  Yet factor recovery succeeds only 26\% of the time.
 
@@ -402,18 +402,18 @@ At each position $k$, given the correct carry-in $t_{k-1}$, there are $|F_k| = C
 Theorem~\ref{thm:rounding} applies to \emph{sequential} rounding procedures that fix digits in order without backtracking.  It does not rule out all polynomial-time extraction procedures from SOS relaxations---for instance, rounding schemes that exploit global correlations in the moment matrix or process digits in a non-sequential order.  Extending the lower bound to arbitrary polynomial-time rounding remains an open problem; see Section~\ref{sec:future} for discussion.
 \end{remark}
 
-\subsection{Base-Dependent Spectral Landscape}
+\subsection{The Landscape: Base-2 Is Clean, Base-10 Is Messy}
 
 We examine the singular value structure of lattice points in $\Lambda_n \cap \mathcal{B}$, reshaped as $d_x \times d_y$ matrices.  A lattice point is \emph{near-rank-1} if its second singular value satisfies $\sigma_2/\sigma_1 < 0.1$.
 
-\begin{theorem}[Base-dependent spectral landscape]\label{thm:spectral}
+\begin{proposition}[Base-dependent spectral landscape]\label{thm:spectral}
 For balanced semiprimes with $d$ digit positions:
 \begin{enumerate}[(a)]
 \item For base $b = 2$, the only lattice points with $\sigma_2/\sigma_1 < 0.1$ are the two exact factorizations.  Zero spurious near-rank-1 points exist.
 \item For base $b = 10$, up to $79\%$ of lattice points in $\Lambda_n \cap \mathcal{B}$ are spurious near-rank-1 ($\sigma_2/\sigma_1 < 0.1$ but not exact factorizations).
 \item Nuclear norm minimization over the carry-propagation lattice therefore finds the correct factorization in base~2, but returns misleading solutions in base~10.
 \end{enumerate}
-\end{theorem}
+\end{proposition}
 
 \begin{proof}[Proof sketch]
 (a) In base~2, each $z_{ij} \in \{0, 1\}$, and the box constraints $z_{ij} \in \{0, (b{-}1)^2\} = \{0, 1\}$ force every lattice point to be a binary matrix.  A binary matrix with $\sigma_2/\sigma_1 < 0.1$ must have rank~1 (up to rounding of a single entry): the Eckart--Young theorem shows the best rank-1 approximation captures $> 99\%$ of Frobenius norm, leaving $< 1\%$ for $\sigma_2$.  With integer entries in $\{0,1\}$, this forces exact rank~1.
@@ -425,7 +425,7 @@ For balanced semiprimes with $d$ digit positions:
 
 \textbf{Interpretation.}  Base~2 is \emph{spectrally clean}: the binary constraint $z_{ij} \in \{0,1\}$ eliminates all spurious near-rank-1 points, making nuclear norm minimization exact.  Larger bases introduce a ``spectral fog'' of near-rank-1 points that obscure the true factorization.  This provides a structural explanation for why base~2 is special in the SOS analysis (degree-2 SOS is already tight due to $x_i(1 - x_i) \ge 0$).
 
-\subsection{Blind Deconvolution and SVD Recovery}
+\subsection{SVD Sees Factors but Cannot Grab Them}
 
 The digit convolution formulation $Z = \mathbf{x} \otimes \mathbf{y}$ subject to linear constraints $A(Z) = \mathbf{b}$ is an instance of \emph{blind deconvolution}: recovering two unknown signals from their convolution under linear measurements.  We test SVD-based recovery: compute the minimum-norm solution $Z^*$ to the carry-propagation system, take its SVD $Z^* = U \Sigma V^T$, and extract candidate factors from the leading left and right singular vectors.
 
@@ -435,7 +435,7 @@ The digit convolution formulation $Z = \mathbf{x} \otimes \mathbf{y}$ subject to
 \item Factor recovery rate: $0\%$ across all instances and bases tested.
 \end{itemize}
 
-\textbf{Interpretation.}  The SVD ``sees'' the factors---the leading singular direction is correlated with the true factorization---but cannot extract them.  This demonstrates the certification-vs-search gap at the spectral level: $Z^*$ contains information about the factors (high correlation) but rounding the continuous singular vectors to valid digit sequences fails universally.  The higher correlation in base~10 is explained by the larger digit range providing more ``signal'' per entry, but this is offset by the spurious near-rank-1 landscape (Theorem~\ref{thm:spectral}(b)).
+\textbf{Interpretation.}  The SVD ``sees'' the factors---the leading singular direction is correlated with the true factorization---but cannot extract them.  This demonstrates the certification-vs-search gap at the spectral level: $Z^*$ contains information about the factors (high correlation) but rounding the continuous singular vectors to valid digit sequences fails universally.  The higher correlation in base~10 is explained by the larger digit range providing more ``signal'' per entry, but this is offset by the spurious near-rank-1 landscape (Proposition~\ref{thm:spectral}(b)).
 
 \subsection{Moment Indistinguishability}
 
@@ -465,7 +465,9 @@ Given $Z \in \Lambda_n \cap \mathcal{B}$, the oracle returns:
 A positive response yields the factorization.
 \end{definition}
 
-\subsection{Main Result: Rank-1 Sparsity}
+\subsection{Rank-1 Points Are $2^{-d^2/4}$ Sparse (Theorem~D)}
+
+Combining Theorem~\ref{thm:transfer} with the elementary observation that semiprimes have at most two factorizations, we obtain the structural consequence:
 
 \begin{theorem}[Rank-1 sparsity]\label{thm:sparsity}
 For a $\beta$-bit balanced semiprime $n = p \cdot q$ in base $b$ with $d = \lceil \log_b n \rceil$:
@@ -475,39 +477,36 @@ For a $\beta$-bit balanced semiprime $n = p \cdot q$ in base $b$ with $d = \lcei
 \[
 \frac{|\Lambda_n \cap \mathcal{R}_1 \cap \mathcal{B}|}{|\Lambda_n \cap \mathcal{B}|} \le 2^{-\Omega(d^2)}
 \]
-which is proven rigorously by Theorem~\ref{thm:transfer}.
 \end{enumerate}
 \end{theorem}
 
 \begin{proof}
 Part (a): A rank-1 matrix $Z = \mathbf{x} \otimes \mathbf{y}$ in $\Lambda_n \cap \mathcal{B}$ yields $p = \sum x_i b^i$, $q = \sum y_j b^j$ with $pq = n$. Since $n$ is semiprime, at most two factorizations exist.
 
-Part (b): The lattice point count satisfies $|\Lambda_n \cap \mathcal{B}| = 2^{d^2/4 + O(d)}$ by Theorem~\ref{thm:transfer}, giving the ratio $\le 2/2^{d^2/4 + O(d)} = 2^{-\Omega(d^2)}$.
+Part (b): Combining Theorem~\ref{thm:transfer} with part~(a) yields the ratio $\le 2/2^{d^2/4 + O(d)} = 2^{-\Omega(d^2)}$.
 \end{proof}
 
 \textbf{Interpretation.} Rank-1 points are a $2^{-\Omega(d^2)}$ fraction of the feasible lattice. Any algorithm testing lattice points without exploiting rank-1 structure requires exponentially many queries.
 
-\subsection{Oracle Lower Bounds}
+\subsection{Oracle Lower Bounds Follow}
 
-\begin{theorem}[Black-box lower bound]\label{thm:bbox}
+The exponential sparsity of Theorem~\ref{thm:sparsity} immediately yields query complexity lower bounds.
+
+\begin{corollary}[Black-box lower bound]\label{thm:bbox}
 In the black-box model, any deterministic algorithm requires $Q(\beta) \ge |\Lambda_n \cap \mathcal{B}|/2 - 1$ queries.
-\end{theorem}
+\end{corollary}
 
 \begin{proof}
-Adversary argument: answer ``no'' until $\le 2$ candidates remain.
+Combining Theorem~\ref{thm:sparsity} with part~(a): the adversary answers ``no'' until $\le 2$ candidates remain, requiring at least $|\Lambda_n \cap \mathcal{B}|/2 - 1 = 2^{\Omega(d^2)}$ queries by the lattice count from Theorem~\ref{thm:transfer}.
 \end{proof}
 
-\begin{theorem}[Generic oracle lower bound]\label{thm:generic}
+\begin{corollary}[Generic oracle lower bound]\label{thm:generic}
 Against a generic rank-1 oracle, any algorithm requires $Q(\beta) \ge 2^{\Omega(d^2/\log d)}$ queries in expectation to succeed with probability $\ge 2/3$.
-\end{theorem}
+\end{corollary}
 
-\begin{theorem}[Conditional lower bound]\label{thm:cond}
-If \textsc{Factoring} $\notin$ BPP, then any digit convolution algorithm with polynomial-time inter-query computation requires $Q(\beta) \ge \beta^{\omega(1)}$ rank-1 queries.
-\end{theorem}
-
-\begin{proof}
-By contrapositive: polynomially many polynomial-time queries yield a polynomial-time factoring algorithm.
-\end{proof}
+\begin{remark}[Conditional lower bound]\label{thm:cond}
+If \textsc{Factoring} $\notin$ BPP, then any digit convolution algorithm with polynomial-time inter-query computation requires $Q(\beta) \ge \beta^{\omega(1)}$ rank-1 queries.  This follows by contrapositive: polynomially many polynomial-time queries yield a polynomial-time factoring algorithm.
+\end{remark}
 
 \subsection{Barriers}
 
