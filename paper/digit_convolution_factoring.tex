@@ -20,8 +20,7 @@
 \DeclareMathOperator{\rank}{rank}
 \DeclareMathOperator{\Seg}{Seg}
 
-\title{Digit Convolution Constraints for Integer Factorization:\\
-SMT Encodings, Lattice Structure, and\\Restricted-Model Lower Bounds}
+\title{The Rank-1 Barrier in Digit Convolution Factoring}
 
 \author[1]{struktured}
 \affil[1]{struktured labs}
@@ -31,7 +30,13 @@ SMT Encodings, Lattice Structure, and\\Restricted-Model Lower Bounds}
 \maketitle
 
 \begin{abstract}
-We investigate integer factorization through the lens of digit convolution constraints, a formulation that decomposes the problem $n = p \cdot q$ into base-$b$ digit-level arithmetic with explicit carry propagation. This formulation encodes factoring as a system of modular constraints $\alpha_k + t_{k-1} \equiv c_k \pmod{b}$ where $\alpha_k = \sum_{i+j=k} x_i y_j$ is the $k$-th digit convolution coefficient. We implement this encoding as SMT bitvector assertions in Z3 and compare it systematically against circuit-based SAT encodings and raw bitvector multiplication. A base sweep over 18 bases reveals that power-of-2 bases consistently outperform others, achieving up to $16\times$ speedup over raw bitvector at 32 bits. However, multi-instance experiments (50 balanced semiprimes per bit size) show that the encoding advantage is not statistically significant (Cohen's $d < 0.31$). We then analyze the lattice structure of the carry-propagation system, identifying the rank-1 constraint $Z = \mathbf{x} \otimes \mathbf{y}$ as the precise locus of hardness: LLL efficiently solves the linear subsystem but cannot enforce the nonlinear rank-1 condition. An SDP relaxation of the rank-1 constraint fails with a 30--39\% integrality gap. We prove that the carry-propagation lattice contains exactly $2^{d^2/4 + O(d)}$ points (base~2), establishing the closed-form constant $\alpha = 1/4$ via a row-sum identity and binomial parity argument, and generalize to $\alpha(b) = \log_2((b{-}1)^2+1)/4$ for arbitrary bases. A spectral analysis reveals a sharp base-dependent landscape: in base~2, the only near-rank-1 lattice points are the two exact factorizations, whereas in base~10, up to 79\% of lattice points are spurious near-rank-1, explaining why nuclear norm minimization fails in larger bases. SVD-based blind deconvolution of the carry-constrained system achieves high correlation with true factors (0.83 in base~10) but 0\% recovery rate, demonstrating a spectral certification-vs-search gap. Finally, we establish unconditional lower bounds in black-box and generic oracle models, proving that rank-1 points constitute a $2^{-\Omega(d^2)}$ fraction of the carry-propagation lattice, with degree-4 moment indistinguishability providing empirical support for bounded-view rounding hardness.
+We decompose integer factorization into a tractable linear part and an intractable nonlinear part via digit convolution with carry propagation.
+The carry-propagation constraints define an affine lattice of dimension $\Theta(d^2)$; within it, valid factorizations correspond to rank-1 integer matrices $Z = \mathbf{x}\otimes\mathbf{y}$.
+We prove the lattice contains $2^{d^2/4+O(d)}$ points (base~2), establishing the exact constant $\alpha=1/4$ via a transfer-matrix row-sum identity.
+The carry chain reveals only $O(d\log d)$ of these $d^2/4$ bits---a vanishing fraction.
+Degree-4 SOS certification closes the continuous relaxation gap to $<0.1\%$, yet sequential rounding fails with probability $2^{-\Theta(d^2)}$, demonstrating a certification-versus-search gap paralleling results for planted clique and tensor PCA.
+SVD-based blind deconvolution achieves high factor correlation ($0.83$ in base~10) but $0\%$ recovery, confirming the gap at the spectral level.
+In restricted oracle models these results yield unconditional $2^{\Omega(d^2)}$ query lower bounds.
 \end{abstract}
 
 \section{Introduction}
@@ -44,32 +49,22 @@ A parallel line of research has explored constraint-satisfaction approaches to f
 
 Recent hybrid approaches combine SAT solvers with lattice reduction: Ajani et al.~\cite{ajani24} showed that when approximately 50--60\% of a factor's bits are leaked, a circuit-based SAT solver combined with Coppersmith's lattice method can factor 768-bit numbers in under 800 seconds. Without leaked bits, the approach remains exponential.
 
+We also implement the digit convolution formulation as SMT bitvector assertions in Z3, finding that digit constraints provide constant-factor speedups but do not change the exponential scaling class (Appendix~\ref{app:smt}).
+
 \subsection{Contributions}
 
 This paper makes the following contributions:
 
 \begin{enumerate}[leftmargin=*]
-\item \textbf{Digit convolution formulation.} We present a systematic treatment of integer factorization as digit convolution with carry propagation (Section~\ref{sec:formulation}), formulating the problem as modular arithmetic constraints rather than Boolean circuits. The base~$b$ serves as a tunable parameter with no analog in circuit-based approaches.
+\item \textbf{Digit convolution formulation with rank-1 barrier identification.} We present integer factorization as digit convolution with carry propagation (Section~\ref{sec:formulation}), identifying the rank-1 constraint $Z = \mathbf{x}\otimes\mathbf{y}$ as the precise locus of hardness: LLL efficiently solves the linear subsystem but cannot enforce the nonlinear rank-1 condition.
 
-\item \textbf{SMT encoding and experimental evaluation.} We implement the digit convolution constraints as Z3 bitvector assertions and conduct systematic experiments (Sections~\ref{sec:smt}--\ref{sec:experiments}): a base sweep showing power-of-2 bases dominate; multi-instance benchmarks establishing that the encoding advantage is not statistically significant at 32 bits; scaling law fits confirming digit constraints share the same exponential growth class; and leaked-bit experiments showing a phase transition at 50--70\% known bits.
+\item \textbf{Transfer matrix with $\alpha = 1/4$ (Theorem~A).} We prove $\log_2|\Lambda_n \cap \mathcal{B}| = d^2/4 + O(d)$ for base~2 via a row-sum identity and binomial parity argument, and generalize to $\alpha(b) = \log_2((b{-}1)^2+1)/4$ for arbitrary bases (Theorem~\ref{thm:transfer}).
 
-\item \textbf{Lattice analysis and the rank-1 barrier.} We reformulate the carry-propagation system as a lattice problem (Section~\ref{sec:lattice}) and identify the rank-1 constraint $Z = \mathbf{x} \otimes \mathbf{y}$ as the precise obstruction to efficient solution.
+\item \textbf{Carry channel capacity (Theorem~B).} The carry chain reveals only $\Theta(d\log d)$ bits of a $\Theta(d^2)$-bit lattice---a vanishing fraction $O(\log d/d)$ (Theorem~\ref{thm:channel}).
 
-\item \textbf{Transfer matrix spectral analysis with closed-form constant (Theorem~A).} We prove $\log_2|\Lambda_n \cap \mathcal{B}| = d^2/4 + O(d)$ for base~2, establishing the exact constant $\alpha = 1/4$ via a row-sum identity (Lemma~\ref{lem:rowsum}) and binomial parity argument (Theorem~\ref{thm:transfer}).  For general base~$b$, we derive $\alpha(b) = \log_2((b{-}1)^2+1)/4$.
+\item \textbf{Certification-vs-search gap: SOS rounding $+$ SVD blind deconvolution (Theorem~C).} Degree-4 SOS closes the continuous gap to $<0.1\%$, but sequential rounding fails with probability $2^{-\Theta(d^2)}$ (Theorem~\ref{thm:rounding}).  SVD of the carry-constrained system achieves high factor correlation but $0\%$ recovery.
 
-\item \textbf{Information-theoretic carry channel analysis (Theorem~B).}  Using the forward--backward algorithm and the Diaconis--Fulman eigenvalue theory~\cite{diaconis09}, we prove the carry chain reveals only $\Theta(d \log d)$ bits of a $\Theta(d^2)$-bit lattice---a vanishing fraction $O(\log d / d)$ (Theorem~\ref{thm:channel}).
-
-\item \textbf{SOS rounding hardness (Theorem~C).}  Degree-4 SOS closes the continuous gap to $<0.1\%$, but we prove sequential rounding fails with probability $2^{-\Theta(d^2)}$ (Theorem~\ref{thm:rounding}).  To our knowledge, this is the first explicit certification-vs-search separation demonstrated in a number-theoretic recovery formulation.
-
-\item \textbf{Base-dependent spectral landscape.} We show that base~2 has zero spurious near-rank-1 lattice points ($\sigma_2/\sigma_1 < 0.1$), while base~10 has up to 79\% spurious near-rank-1 points, explaining the failure of nuclear norm minimization in larger bases (Proposition~\ref{thm:spectral}).
-
-\item \textbf{Blind deconvolution experiment.} SVD of the minimum-norm carry-constrained solution achieves average factor correlation 0.83 (base~10) but 0\% recovery, demonstrating a spectral certification-vs-search gap.
-
-\item \textbf{Moment indistinguishability.} At linear budget ($k = d$ moment entries), 26--43\% of semiprime pairs share identical degree-4 moment entries, with agreement increasing with $d$, supporting bounded-view rounding hardness.
-
-\item \textbf{Restricted-model lower bounds (Theorem~D and Corollaries).} We establish that rank-1 points are exponentially sparse ($2^{-\Omega(d^2)}$ fraction) in the carry-propagation lattice (Theorem~\ref{thm:sparsity}), from which unconditional lower bounds in black-box and generic oracle models follow as corollaries (Section~\ref{sec:lower}).
-
-\item \textbf{A Rust implementation} of the backtracking solver achieving 30--33$\times$ speedup over Python with identical search paths (Appendix~\ref{app:rust}).
+\item \textbf{Restricted-model lower bounds (Theorem~D).} Rank-1 points constitute a $2^{-\Omega(d^2)}$ fraction of the carry-propagation lattice, yielding unconditional lower bounds in black-box and generic oracle models (Theorem~\ref{thm:sparsity}).
 \end{enumerate}
 
 \subsection{What This Paper Is Not}
@@ -122,136 +117,16 @@ Factoring $n$ in base $b$ reduces to finding digit vectors $\mathbf{x} = (x_0, \
 If we remove carry propagation (setting all $t_k = 0$), we obtain polynomial factoring over $\mathbb{Z}[x]$. The LLL algorithm~\cite{lll82} solves polynomial factoring in polynomial time because the constraint system is \emph{linear} in the products $z_{ij} = x_i y_j$. Integer factoring is harder because carry propagation couples all digit positions, and the system is globally constrained.
 
 %----------------------------------------------------------------------
-\section{SMT Encoding}
-\label{sec:smt}
-
-\subsection{Bitvector Encoding in Z3}
-
-We encode the digit convolution constraints as assertions in the SMT-LIB bitvector theory, solved by Z3~\cite{demoura08}.
-
-\textbf{Variables.} Bitvector variables $x$ and $y$ of bit width $\beta/2$ (for balanced semiprimes).
-
-\textbf{Core constraint.} Assert $x \cdot y = n$ using native bitvector multiplication, with extended width to avoid overflow.
-
-\textbf{Digit constraints.} For a chosen base $b$, assert for each digit position~$k$:
-\[
-(x \cdot y) \bmod b^{k+1} = n \bmod b^{k+1}
-\]
-using bitvector modular arithmetic.
-
-\subsection{Base as a Tunable Parameter}
-
-A distinctive feature of our encoding is that the base $b$ is a free parameter with no analog in circuit-based SAT approaches. When $b = 2^k$, the operation $m \bmod b$ reduces to a bitvector extract (bit-slicing), which Z3 handles with zero overhead. Non-power-of-2 bases require integer division within the solver.
-
-%----------------------------------------------------------------------
-\section{Experimental Results}
-\label{sec:experiments}
-
-\subsection{Base Sweep}
-
-We tested 18 bases (2--512) on balanced semiprimes at 20--32 bits. Results at 32 bits:
-
-\begin{table}[h]
-\centering
-\caption{Base sweep results at 32 bits (seed=42).}
-\label{tab:basesweep}
-\begin{tabular}{@{}lrr@{}}
-\toprule
-Base & Runtime (s) & Speedup vs.\ raw \\
-\midrule
-512 & 0.13 & $16.4\times$ \\
-16 & 0.34 & $6.5\times$ \\
-64 & 0.35 & $6.4\times$ \\
-128 & 1.33 & $1.7\times$ \\
-8 & 1.38 & $1.6\times$ \\
-\emph{raw} & \emph{2.21} & \emph{$1.0\times$} \\
-5 & 5.72 & $0.39\times$ \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-Powers of 2 dominate due to Z3's bit-extraction optimization. Non-power-of-2 bases can \emph{hurt} performance. The hypothesis $\text{optimal base} \sim 2^{\beta/4}$ is rejected ($R^2 = 0.09$).
-
-\subsection{Multi-Instance Statistics}
-
-50 balanced semiprimes per bit size (seeds 0--49), bit sizes 16--32. Three SMT configurations: raw, base-16, base-256.
-
-\begin{table}[h]
-\centering
-\caption{Statistical significance of encoding differences at 32 bits.}
-\label{tab:multiinstance}
-\begin{tabular}{@{}lrrr@{}}
-\toprule
-Comparison & $\Delta\mu$ (s) & Cohen's $d$ & Significant? \\
-\midrule
-Raw vs.\ Base-16 & 0.13 & 0.12 & No \\
-Raw vs.\ Base-256 & $-0.19$ & 0.19 & No \\
-Base-16 vs.\ Base-256 & 0.32 & 0.31 & No \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-At 32 bits, none of the digit-level encodings provide a statistically significant speedup (Cohen's $d < 0.31$). Classical algorithms (Pollard's rho, median 0.107~ms) outperform the best SMT configuration by approximately $12{,}000\times$.
-
-\subsection{Scaling Laws}
-
-Extended sweep at 20--40 bits with power-of-2 bases. Fitting $\text{time} = a \cdot 2^{b \cdot \beta}$:
-
-\begin{table}[h]
-\centering
-\caption{Exponential scaling fits.}
-\label{tab:scaling}
-\begin{tabular}{@{}lrrr@{}}
-\toprule
-Configuration & Exponent $b$ & $R^2$ & Doubles every \\
-\midrule
-Raw & 0.339 & 0.688 & 2.9 bits \\
-Base 64 & 0.378 & 0.959 & 2.6 bits \\
-Base 32 & 0.458 & 0.971 & 2.2 bits \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-Digit constraints do not change the scaling class. They provide constant-factor speedups, more predictable runtime ($R^2 > 0.95$ vs.\ $0.69$), and the ability to solve instances the raw solver cannot (40-bit).
-
-\subsection{Leaked Bits}
-
-Phase transition in solvability as a function of leaked bit fraction:
-
-\begin{table}[h]
-\centering
-\caption{Minimum leak fraction for successful factoring.}
-\label{tab:leaked}
-\begin{tabular}{@{}rrr@{}}
-\toprule
-Semiprime bits & Factor bits & Min leak fraction \\
-\midrule
-32 & 16 & 0.0 \\
-48 & 24 & 0.3 \\
-64 & 32 & 0.5 \\
-80 & 40 & 0.6 \\
-96 & 48 & 0.6 \\
-128 & 64 & 0.7 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-At 64 bits, our 50\% threshold matches Ajani et al.~\cite{ajani24}. At 128 bits, we require 70\% vs.\ their ${\sim}60\%$, suggesting circuit-based encodings produce more unit-propagation opportunities at larger sizes.
-
-%----------------------------------------------------------------------
 \section{Lattice Structure and the Rank-1 Barrier}
 \label{sec:lattice}
 
-\subsection{Carry Propagation as a Linear System}
+\subsection{Carry Propagation Lattice}
 
 Introduce linearized variables $z_{ij}$ intended to represent $x_i \cdot y_j$, and carry variables $t_k$. The constraints~\eqref{eq:carry} become:
 \begin{equation}\label{eq:linear}
 \sum_{\substack{i+j=k}} z_{ij} + t_{k-1} - b \cdot t_k = c_k, \quad k = 0, \ldots, d-1
 \end{equation}
 This is a system of $d$ linear equations in $m = d_x d_y + d$ integer unknowns: $A\mathbf{v} = \mathbf{c}$.
-
-\subsection{Lattice Formulation}
-
 The integer solutions form an affine lattice $\Lambda_n = \{\mathbf{v} \in \mathbb{Z}^m : A\mathbf{v} = \mathbf{c}\}$ of dimension $d_x d_y = \Theta(d^2)$.
 
 \subsection{The Rank-1 Constraint}
@@ -262,19 +137,11 @@ For a lattice point to represent a valid factorization, the matrix $Z = (z_{ij})
 \end{equation}
 for $\mathbf{x} \in \{0,\ldots,b{-}1\}^{d_x}$, $\mathbf{y} \in \{0,\ldots,b{-}1\}^{d_y}$. This is a system of $\binom{d_x}{2}\binom{d_y}{2}$ quadratic equations (the $2 \times 2$ minors of $Z$), defining the Segre variety $\Seg(d_x, d_y)$ of dimension $d_x + d_y - 1$ in the ambient $d_x d_y$-dimensional space.
 
-\textbf{Within this representation, the rank-1 constraint is the precise locus of hardness.} LLL efficiently handles the linear system~\eqref{eq:linear}. The rank-1 condition is the nonlinear obstruction.
-
-\subsection{Why LLL Works for Polynomial Factoring}
-
-Polynomial factoring over $\mathbb{Z}[x]$ has no carry propagation ($t_k = 0$). The constraint system is linear, and LLL finds factors as short lattice vectors. Integers lack the ``dimension reduction'' that polynomial degree provides: factoring a degree-$d$ polynomial yields factors of strictly smaller degree, enabling recursion. No analogous property exists for integers.
+\textbf{Within this representation, the rank-1 constraint is the precise locus of hardness.} LLL efficiently handles the linear system~\eqref{eq:linear}. The rank-1 condition is the nonlinear obstruction.  Polynomial factoring over $\mathbb{Z}[x]$ has no carry propagation ($t_k = 0$), reducing the problem to a linear system that LLL solves directly.  Integers lack the ``dimension reduction'' that polynomial degree provides.
 
 \subsection{SDP Relaxation Failure}
 
-We relaxed the rank-1 constraint via semidefinite programming, using ADMM-like alternating projection between the affine subspace $\{Z : A\mathbf{v} = \mathbf{c}\}$ and $\{Z : \rank(Z) = 1\}$.
-
-\textbf{Results.} The integrality gap (fraction of spectral mass outside the leading singular value) is 30--39\%, growing with problem size. The ADMM iteration oscillates without converging because the feasible set is non-convex. The alternating projection's apparent successes reduce to randomized trial division.
-
-\textbf{Assessment.} Convex relaxation of the rank-1 constraint is insufficient for factoring.
+We relaxed the rank-1 constraint via semidefinite programming, using ADMM-like alternating projection between the affine subspace $\{Z : A\mathbf{v} = \mathbf{c}\}$ and $\{Z : \rank(Z) = 1\}$.  The integrality gap is 30--39\%, growing with problem size, and the iteration oscillates without converging because the feasible set is non-convex.  Convex relaxation of the rank-1 constraint is insufficient for factoring.
 
 \subsection{The Lattice Has $2^{d^2/4}$ Points (Theorem~A)}
 
@@ -402,50 +269,13 @@ At each position $k$, given the correct carry-in $t_{k-1}$, there are $|F_k| = C
 Theorem~\ref{thm:rounding} applies to \emph{sequential} rounding procedures that fix digits in order without backtracking.  It does not rule out all polynomial-time extraction procedures from SOS relaxations---for instance, rounding schemes that exploit global correlations in the moment matrix or process digits in a non-sequential order.  Extending the lower bound to arbitrary polynomial-time rounding remains an open problem; see Section~\ref{sec:future} for discussion.
 \end{remark}
 
-\subsection{The Landscape: Base-2 Is Clean, Base-10 Is Messy}
-
-We examine the singular value structure of lattice points in $\Lambda_n \cap \mathcal{B}$, reshaped as $d_x \times d_y$ matrices.  A lattice point is \emph{near-rank-1} if its second singular value satisfies $\sigma_2/\sigma_1 < 0.1$.
-
-\begin{proposition}[Base-dependent spectral landscape]\label{thm:spectral}
-For balanced semiprimes with $d$ digit positions:
-\begin{enumerate}[(a)]
-\item For base $b = 2$, the only lattice points with $\sigma_2/\sigma_1 < 0.1$ are the two exact factorizations.  Zero spurious near-rank-1 points exist.
-\item For base $b = 10$, up to $79\%$ of lattice points in $\Lambda_n \cap \mathcal{B}$ are spurious near-rank-1 ($\sigma_2/\sigma_1 < 0.1$ but not exact factorizations).
-\item Nuclear norm minimization over the carry-propagation lattice therefore finds the correct factorization in base~2, but returns misleading solutions in base~10.
-\end{enumerate}
-\end{proposition}
-
-\begin{proof}[Proof sketch]
-(a) In base~2, each $z_{ij} \in \{0, 1\}$, and the box constraints $z_{ij} \in \{0, (b{-}1)^2\} = \{0, 1\}$ force every lattice point to be a binary matrix.  A binary matrix with $\sigma_2/\sigma_1 < 0.1$ must have rank~1 (up to rounding of a single entry): the Eckart--Young theorem shows the best rank-1 approximation captures $> 99\%$ of Frobenius norm, leaving $< 1\%$ for $\sigma_2$.  With integer entries in $\{0,1\}$, this forces exact rank~1.
-
-(b) In base~10, $z_{ij} \in \{0, 1, \ldots, 81\}$.  The large dynamic range permits many matrices where the leading singular direction dominates but $\rank(Z) > 1$.  Exhaustive enumeration at small $d$ confirms up to 79\% of lattice points are spurious near-rank-1.
-
-(c) Nuclear norm $\|Z\|_* = \sum \sigma_i$ is the tightest convex relaxation of rank.  Minimizing $\|Z\|_*$ subject to the carry-propagation constraints selects lattice points with concentrated singular values.  In base~2, these are necessarily rank-1 (by part~(a)).  In base~10, the minimizer is generically one of the 79\% spurious points.
-\end{proof}
-
-\textbf{Interpretation.}  Base~2 is \emph{spectrally clean}: the binary constraint $z_{ij} \in \{0,1\}$ eliminates all spurious near-rank-1 points, making nuclear norm minimization exact.  Larger bases introduce a ``spectral fog'' of near-rank-1 points that obscure the true factorization.  This provides a structural explanation for why base~2 is special in the SOS analysis (degree-2 SOS is already tight due to $x_i(1 - x_i) \ge 0$).
-
 \subsection{SVD Sees Factors but Cannot Grab Them}
 
 The digit convolution formulation $Z = \mathbf{x} \otimes \mathbf{y}$ subject to linear constraints $A(Z) = \mathbf{b}$ is an instance of \emph{blind deconvolution}: recovering two unknown signals from their convolution under linear measurements.  We test SVD-based recovery: compute the minimum-norm solution $Z^*$ to the carry-propagation system, take its SVD $Z^* = U \Sigma V^T$, and extract candidate factors from the leading left and right singular vectors.
 
-\textbf{Results.}
-\begin{itemize}[leftmargin=*]
-\item Average $|\text{correlation}|$ between leading singular vectors and true factor digits: $0.48$ (base~2), $0.83$ (base~10).
-\item Factor recovery rate: $0\%$ across all instances and bases tested.
-\end{itemize}
+\textbf{Results.}  Average $|\text{correlation}|$ between leading singular vectors and true factor digits: $0.48$ (base~2), $0.83$ (base~10).  Factor recovery rate: $0\%$ across all instances and bases tested.
 
-\textbf{Interpretation.}  The SVD ``sees'' the factors---the leading singular direction is correlated with the true factorization---but cannot extract them.  This demonstrates the certification-vs-search gap at the spectral level: $Z^*$ contains information about the factors (high correlation) but rounding the continuous singular vectors to valid digit sequences fails universally.  The higher correlation in base~10 is explained by the larger digit range providing more ``signal'' per entry, but this is offset by the spurious near-rank-1 landscape (Proposition~\ref{thm:spectral}(b)).
-
-\subsection{Moment Indistinguishability}
-
-We provide empirical support for bounded-view rounding hardness by examining the degree-4 SOS moment matrix entries.
-
-\begin{proposition}[Moment collision frequency]\label{prop:moments}
-At linear budget ($k = d$ moment entries selected by largest absolute value), $26$--$43\%$ of randomly chosen semiprime pairs share identical degree-$4$ moment entries.  The agreement fraction increases with digit count: from $87\%$ at $d = 8$ to $93\%$ at $d = 16$.
-\end{proposition}
-
-\textbf{Interpretation.}  Any rounding scheme that inspects $O(d^c)$ moment entries (for constant $c$) cannot distinguish a constant fraction of semiprime pairs.  Since the correct rounding must depend on the specific semiprime, moment indistinguishability implies that $O(d^c)$-entry rounding fails on at least $26\%$ of instances.  The increasing agreement fraction with $d$ supports the conjecture that the failure rate grows with problem size, consistent with the $2^{-\Theta(d^2)}$ sequential rounding bound of Theorem~\ref{thm:rounding}.
+The SVD ``sees'' the factors---the leading singular direction is correlated with the true factorization---but cannot extract them.  The higher correlation in base~10 is offset by a spectral landscape where up to 79\% of lattice points are spurious near-rank-1 ($\sigma_2/\sigma_1 < 0.1$), while base~2 has zero spurious near-rank-1 points due to the binary constraint $z_{ij}\in\{0,1\}$.  Empirical evidence for bounded-view hardness (26--43\% of semiprime pairs share identical degree-4 moment entries at linear budget) is reported in the code repository.
 
 %----------------------------------------------------------------------
 \section{Restricted-Model Lower Bounds}
@@ -505,12 +335,12 @@ Against a generic rank-1 oracle, any algorithm requires $Q(\beta) \ge 2^{\Omega(
 \end{corollary}
 
 \begin{remark}[Conditional lower bound]\label{thm:cond}
-If \textsc{Factoring} $\notin$ BPP, then any digit convolution algorithm with polynomial-time inter-query computation requires $Q(\beta) \ge \beta^{\omega(1)}$ rank-1 queries.  This follows by contrapositive: polynomially many polynomial-time queries yield a polynomial-time factoring algorithm.
+If \textnormal{\textsc{Factoring}} $\notin$ BPP, then any digit convolution algorithm with polynomial-time inter-query computation requires $Q(\beta) \ge \beta^{\omega(1)}$ rank-1 queries.  This follows by contrapositive: polynomially many polynomial-time queries yield a polynomial-time factoring algorithm.
 \end{remark}
 
 \subsection{Barriers}
 
-Proving unconditional superpolynomial lower bounds in the full model faces three barriers: the algebraic structure of the Segre variety (smooth, rational, with explicit equations); the banded structure of the carry-propagation lattice enabling decomposition strategies; and the Razborov--Rudich natural proofs barrier~\cite{rr97}.
+Proving unconditional superpolynomial lower bounds in the full model faces three barriers: the algebraic structure of the Segre variety, the banded structure of the carry-propagation lattice enabling decomposition strategies, and the Razborov--Rudich natural proofs barrier~\cite{rr97}.
 
 %----------------------------------------------------------------------
 \section{Related Work}
@@ -539,14 +369,9 @@ We note candidly: digit constraints do not provide statistically significant spe
 
 \begin{enumerate}[leftmargin=*]
 \item \textbf{Non-sequential rounding hardness:} Theorem~\ref{thm:rounding} covers sequential rounding.  Extending to arbitrary polynomial-time rounding schemes (via pseudo-calibration~\cite{barak16} adapted to the digit convolution setting) would strengthen the certification-vs-search gap to an unconditional SOS lower bound.
-\item \textbf{Bounded-view rounding hardness:} Proposition~\ref{prop:moments} provides empirical evidence that $O(d^c)$-entry rounding fails on a constant fraction of instances.  Formalizing this as a lower bound---showing that any rounding scheme inspecting $o(d^2)$ moment entries fails with probability $1 - o(1)$---would strengthen the SOS separation.  The increasing moment agreement fraction (87\% $\to$ 93\%) suggests an asymptotic argument may be feasible.
-\item \textbf{Blind deconvolution rounding techniques:} The high SVD correlation (0.83 in base~10) suggests that more sophisticated rounding of singular vectors---e.g., Wirtinger flow, truncated power iteration, or semidefinite rounding of the leading singular subspace---could bridge the certification-vs-search gap in specific base regimes.  Understanding which bases admit efficient spectral rounding is an open question.
+\item \textbf{Blind deconvolution rounding techniques:} The high SVD correlation (0.83 in base~10) suggests that more sophisticated rounding of singular vectors---e.g., Wirtinger flow, truncated power iteration, or semidefinite rounding of the leading singular subspace---could bridge the certification-vs-search gap in specific base regimes.
 \item \textbf{Intersection theory:} The intersection class of $\Seg(d_x, d_y)$ with carry-propagation lattices in the Chow ring could yield dimension bounds with complexity-theoretic implications.  B\'{e}zout's theorem gives $|\Lambda_n \cap \Seg| \le \binom{d{-}2}{d/2{-}1}$, which is tight at $d = 4$.
-\item \textbf{Geometric Complexity Theory:} The rank-1 constraint has a natural interpretation in terms of $GL(d_x) \times GL(d_y)$ orbit structure, though the connection to the GCT program~\cite{mulmuley01} remains distant and unexplored.
-\item \textbf{Communication complexity:} Viewing factoring as a two-party problem ($\mathbf{x}$ with Alice, $\mathbf{y}$ with Bob) connects to known lower bounds for related problems.
 \end{enumerate}
-
-\textbf{Completed milestones.}  The analytical derivation of $\alpha = 1/4$ (previously listed as a future direction) is now resolved by Theorem~\ref{thm:transfer} via the row-sum identity of Lemma~\ref{lem:rowsum}.
 
 %----------------------------------------------------------------------
 \section*{Reproducibility}
@@ -555,6 +380,118 @@ All code, data, and experiment scripts are available at \url{https://github.com/
 
 %----------------------------------------------------------------------
 \appendix
+\section{SMT Encoding and Experimental Results}
+\label{app:smt}
+
+\subsection{Bitvector Encoding in Z3}
+
+We encode the digit convolution constraints as assertions in the SMT-LIB bitvector theory, solved by Z3~\cite{demoura08}.
+
+\textbf{Variables.} Bitvector variables $x$ and $y$ of bit width $\beta/2$ (for balanced semiprimes).
+
+\textbf{Core constraint.} Assert $x \cdot y = n$ using native bitvector multiplication, with extended width to avoid overflow.
+
+\textbf{Digit constraints.} For a chosen base $b$, assert for each digit position~$k$:
+\[
+(x \cdot y) \bmod b^{k+1} = n \bmod b^{k+1}
+\]
+using bitvector modular arithmetic.
+
+\textbf{Base as a tunable parameter.}
+A distinctive feature of our encoding is that the base $b$ is a free parameter with no analog in circuit-based SAT approaches. When $b = 2^k$, the operation $m \bmod b$ reduces to a bitvector extract (bit-slicing), which Z3 handles with zero overhead. Non-power-of-2 bases require integer division within the solver.
+
+\subsection{Base Sweep}
+
+We tested 18 bases (2--512) on balanced semiprimes at 20--32 bits. Results at 32 bits:
+
+\begin{table}[h]
+\centering
+\caption{Base sweep results at 32 bits (seed=42).}
+\label{tab:basesweep}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Base & Runtime (s) & Speedup vs.\ raw \\
+\midrule
+512 & 0.13 & $16.4\times$ \\
+16 & 0.34 & $6.5\times$ \\
+64 & 0.35 & $6.4\times$ \\
+128 & 1.33 & $1.7\times$ \\
+8 & 1.38 & $1.6\times$ \\
+\emph{raw} & \emph{2.21} & \emph{$1.0\times$} \\
+5 & 5.72 & $0.39\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Powers of 2 dominate due to Z3's bit-extraction optimization. Non-power-of-2 bases can \emph{hurt} performance. The hypothesis $\text{optimal base} \sim 2^{\beta/4}$ is rejected ($R^2 = 0.09$).
+
+\subsection{Multi-Instance Statistics}
+
+50 balanced semiprimes per bit size (seeds 0--49), bit sizes 16--32. Three SMT configurations: raw, base-16, base-256.
+
+\begin{table}[h]
+\centering
+\caption{Statistical significance of encoding differences at 32 bits.}
+\label{tab:multiinstance}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Comparison & $\Delta\mu$ (s) & Cohen's $d$ & Significant? \\
+\midrule
+Raw vs.\ Base-16 & 0.13 & 0.12 & No \\
+Raw vs.\ Base-256 & $-0.19$ & 0.19 & No \\
+Base-16 vs.\ Base-256 & 0.32 & 0.31 & No \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+At 32 bits, none of the digit-level encodings provide a statistically significant speedup (Cohen's $d < 0.31$). Classical algorithms (Pollard's rho, median 0.107~ms) outperform the best SMT configuration by approximately $12{,}000\times$.
+
+\subsection{Scaling Laws}
+
+Extended sweep at 20--40 bits with power-of-2 bases. Fitting $\text{time} = a \cdot 2^{b \cdot \beta}$:
+
+\begin{table}[h]
+\centering
+\caption{Exponential scaling fits.}
+\label{tab:scaling}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Configuration & Exponent $b$ & $R^2$ & Doubles every \\
+\midrule
+Raw & 0.339 & 0.688 & 2.9 bits \\
+Base 64 & 0.378 & 0.959 & 2.6 bits \\
+Base 32 & 0.458 & 0.971 & 2.2 bits \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Digit constraints do not change the scaling class. They provide constant-factor speedups, more predictable runtime ($R^2 > 0.95$ vs.\ $0.69$), and the ability to solve instances the raw solver cannot (40-bit).
+
+\subsection{Leaked Bits}
+
+Phase transition in solvability as a function of leaked bit fraction:
+
+\begin{table}[h]
+\centering
+\caption{Minimum leak fraction for successful factoring.}
+\label{tab:leaked}
+\begin{tabular}{@{}rrr@{}}
+\toprule
+Semiprime bits & Factor bits & Min leak fraction \\
+\midrule
+32 & 16 & 0.0 \\
+48 & 24 & 0.3 \\
+64 & 32 & 0.5 \\
+80 & 40 & 0.6 \\
+96 & 48 & 0.6 \\
+128 & 64 & 0.7 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+At 64 bits, our 50\% threshold matches Ajani et al.~\cite{ajani24}. At 128 bits, we require 70\% vs.\ their ${\sim}60\%$, suggesting circuit-based encodings produce more unit-propagation opportunities at larger sizes.
+
+%----------------------------------------------------------------------
 \section{Rust Port Performance}
 \label{app:rust}
 
